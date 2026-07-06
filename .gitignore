@@ -37,3 +37,6 @@ pytest-cache-files-*/
 
 # Local machine-specific runtime config (mic device, model choice, etc.)
 .env
+
+# Local planning doc, not for shared history
+docs/ASTRA_WEB_SERVICE_PLAN.md
