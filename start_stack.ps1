@@ -82,6 +82,7 @@ if (-not (Test-Path $python)) {
 Push-Location $root
 $env:PYTHONUNBUFFERED = 1
 $env:AI_ASSISTANT_TTS_BACKEND = "edge"
+$env:AI_ASSISTANT_WHISPER_MODEL_NAME = "small"
 $env:HF_HOME = Join-Path $root ".hf_cache"
 $env:HUGGINGFACE_HUB_CACHE = Join-Path $root ".hf_cache\hub"
 
