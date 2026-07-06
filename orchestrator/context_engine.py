@@ -1,18 +1,10 @@
 """Context assembly for LLM prompts with deterministic formatting."""
-from pathlib import Path
 from typing import Optional
 
+from core.persona import load_system_prompt
 from orchestrator.memory_buffer import ConversationBuffer
 
-SYSTEM_PROMPT_PATH = Path(__file__).resolve().parent.parent / "prompts" / "system_prompt.txt"
 DEFAULT_MAX_CHARS = 4000
-
-
-def _load_system_prompt() -> str:
-    try:
-        return SYSTEM_PROMPT_PATH.read_text(encoding="utf-8").strip()
-    except FileNotFoundError:
-        return "You are a helpful assistant."
 
 
 def build_prompt(
@@ -22,7 +14,7 @@ def build_prompt(
     retrieved_memories: str | None = None,
     max_chars: int = DEFAULT_MAX_CHARS,
 ) -> str:
-    system_prompt = _load_system_prompt()
+    system_prompt = load_system_prompt()
     history = buffer.get_formatted_history()
 
     sections = [
