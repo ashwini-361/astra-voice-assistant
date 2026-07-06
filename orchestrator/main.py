@@ -18,6 +18,7 @@ import httpx
 
 from duplex.audio_listener import AudioListener
 from duplex.interrupt_controller import InterruptController
+from duplex.mic_devices import resolve_device
 from duplex.speech_capture import CaptureDiagnostics, SpeechCapture
 from duplex.state_machine import AssistantStateController
 from duplex.stream_manager import ResponseStreamManager
@@ -406,8 +407,12 @@ def main() -> None:
             last_vad_state = is_speech
             last_vad_log_ts = now
 
-    audio_listener = AudioListener(vad, interrupt_controller, on_vad=_on_vad)
-    speech_capture = SpeechCapture(capture_vad)
+    mic_device = resolve_device(get_settings().mic_device)
+    if mic_device is not None:
+        logger.info("[voice] Using configured mic device index=%s", mic_device)
+
+    audio_listener = AudioListener(vad, interrupt_controller, on_vad=_on_vad, device=mic_device)
+    speech_capture = SpeechCapture(capture_vad, device=mic_device)
 
     try:
         if args.whisper_test:
