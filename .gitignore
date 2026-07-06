@@ -34,3 +34,6 @@ pytest-cache-files-*/
 
 # Local model/download caches
 .hf_cache/
+
+# Local machine-specific runtime config (mic device, model choice, etc.)
+.env
