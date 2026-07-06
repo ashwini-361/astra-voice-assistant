@@ -29,6 +29,13 @@ class Settings(BaseSettings):
     intent_port: int = Field(default=8004)
     intent_model_path: str = Field(default="models/intent.onnx")
 
+    # Input microphone device: empty = OS default. Set to a substring of the
+    # device name (e.g. "AMD Audio Device") or a numeric sounddevice index.
+    # Some Windows mic arrays (e.g. combined webcam+mic modules) silently
+    # deliver zero signal even though the stream opens without error, so the
+    # OS default is not always usable — use select_mic_device.py to test and set this.
+    mic_device: str = Field(default="")
+
     log_level: str = Field(default="INFO")
 
     # LLM generation parameters — controls response length and context window
@@ -52,6 +59,9 @@ class Settings(BaseSettings):
         env_prefix = "AI_ASSISTANT_"
         env_file = ".env"
         env_file_encoding = "utf-8"
+        # Allow vars like AI_ASSISTANT_WHISPER_MODEL_NAME that are read directly
+        # via os.getenv (not Settings fields) without tripping extra_forbidden.
+        extra = "ignore"
 
 
 @lru_cache(maxsize=1)
