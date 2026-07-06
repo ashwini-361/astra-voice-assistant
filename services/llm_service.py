@@ -14,6 +14,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel as PydanticBaseModel
 
 from core.config import get_settings
+from core.persona import load_system_prompt
 from services.llm_metrics import llm_metrics
 from services.llm_models import (
     AgentLoopRequest,
@@ -679,9 +680,22 @@ async def warmup_model() -> None:
         logger.warning("Warmup failed for model '%s'", settings_obj.model, exc_info=True)
 
 
+def _apply_persona(prompt: str) -> str:
+    """Prefix a raw user prompt with the assistant's identity/persona.
+
+    The frontend's chat/voice modes call /generate with just the bare user
+    query (no history baked in), so without this the model answers as
+    whatever base model it is (e.g. "I'm Gemma...") instead of the
+    configured persona in prompts/system_prompt.txt.
+    """
+    persona = load_system_prompt()
+    return f"{persona}\n\nUser: {prompt}\nAssistant:"
+
+
 @app.post("/generate", response_model=GenerateResponse)
 async def generate(request: GenerateRequest):
     start = time.perf_counter()
+    request.prompt = _apply_persona(request.prompt)
     settings_obj = _load_effective_settings(request.model_dump(exclude_none=True))
     request_ctx = build_request_context(request, settings_obj)
     request_id = str(uuid.uuid4())
