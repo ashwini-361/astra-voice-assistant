@@ -15,6 +15,8 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from core.persona import load_system_prompt
+
 from .types import FinalAction, PlannerAction, ToolSchema
 
 
@@ -91,7 +93,9 @@ def build_planner_prompt(
         available_capabilities = ["unknown"]
 
     lines: List[str] = []
-    lines.append("You are a deterministic capability planner.")
+    lines.append(f"IDENTITY: {load_system_prompt()}")
+    lines.append("")
+    lines.append("You are also acting as a deterministic capability planner for tool use.")
     lines.append("Return ONLY one JSON object — no explanation, no markdown.")
     lines.append("")
     lines.append("CRITICAL CONSTRAINT: You MUST choose from AVAILABLE CAPABILITIES listed below.")
@@ -99,6 +103,9 @@ def build_planner_prompt(
     lines.append("")
     lines.append("If enough info exists in trace to answer, return:")
     lines.append('  {"action": "final", "response": "..."}')
+    lines.append("If the query is about your own identity/name, a greeting, small talk, or")
+    lines.append("anything you can answer directly without external info, skip tools and")
+    lines.append("return final immediately using the IDENTITY above to answer as yourself.")
     lines.append("Otherwise return:")
     lines.append('  {"action": "tool", "capability": "<one of the capabilities below>", "arguments": {...}}')
     lines.append("")
@@ -150,6 +157,8 @@ def build_planner_prompt(
     lines.append("- NEVER use search capability with url argument — use fetch instead.")
     lines.append("")
     lines.append("DECISION EXAMPLES:")
+    lines.append('  "who are you" → {"action":"final","response":"<answer using IDENTITY above>"}')
+    lines.append('  "hi" / "hello" → {"action":"final","response":"<brief greeting in character>"}')
     lines.append('  "tell me about Iran war" → step1: {"action":"tool","capability":"search","arguments":{"query":"Iran America war latest"}}')
     lines.append('  (after search) → step2: {"action":"tool","capability":"fetch","arguments":{"url":"<URL from SESSION CONTEXT search results>"}}')
     lines.append('  (after fetch) → step3: {"action":"final","response":"<summary of fetched content>"}')
