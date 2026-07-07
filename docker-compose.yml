@@ -1,0 +1,145 @@
+name: astra
+
+x-app-build: &app-build
+  context: .
+  dockerfile: Dockerfile
+
+services:
+  qdrant:
+    image: qdrant/qdrant:v1.12.1
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant-data:/qdrant/storage
+    healthcheck:
+      # The qdrant/qdrant image has neither curl nor wget (verified
+      # empirically). /bin/sh in this image is dash, which does NOT
+      # support /dev/tcp (that's a bash-only extension) — CMD-SHELL runs
+      # via /bin/sh, so bash must be invoked explicitly (verified: dash
+      # silently fails this test, bash -c works).
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/6333 && printf 'GET /healthz HTTP/1.0\\r\\n\\r\\n' >&3 && head -1 <&3 | grep -q 200"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+    restart: unless-stopped
+
+  whisper:
+    build: *app-build
+    command: uvicorn services.whisper_service:app --host 0.0.0.0 --port 8001
+    ports:
+      - "8001:8001"
+    env_file: .env
+    environment:
+      AI_ASSISTANT_WHISPER_MODEL_NAME: small
+      HF_HOME: /app/.hf_cache
+      HUGGINGFACE_HUB_CACHE: /app/.hf_cache/hub
+    volumes:
+      - whisper-hf-cache:/app/.hf_cache
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 180s
+    restart: unless-stopped
+
+  llm:
+    build: *app-build
+    command: uvicorn services.llm_service:app --host 0.0.0.0 --port 8002
+    ports:
+      - "8002:8002"
+    env_file: .env
+    environment:
+      # Ollama stays native/external (see docs/ASTRA_WEB_SERVICE_PLAN.md) —
+      # not part of this compose stack. Reachable via host.docker.internal.
+      AI_ASSISTANT_OLLAMA_API_URL: http://host.docker.internal:11434
+      AI_ASSISTANT_QDRANT_URL: http://qdrant:6333
+    extra_hosts:
+      # Docker Desktop (Windows/Mac) resolves this automatically; harmless
+      # there. Required on Linux Docker Engine.
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    restart: unless-stopped
+
+  tts:
+    build: *app-build
+    command: uvicorn services.tts_service:app --host 0.0.0.0 --port 8003
+    ports:
+      - "8003:8003"
+    env_file: .env
+    environment:
+      AI_ASSISTANT_TTS_BACKEND: edge
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    restart: unless-stopped
+
+  intent:
+    build: *app-build
+    command: uvicorn services.intent_service:app --host 0.0.0.0 --port 8004
+    ports:
+      - "8004:8004"
+    env_file: .env
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    restart: unless-stopped
+
+  seed:
+    build: *app-build
+    command: python docker/seed.py
+    env_file: .env
+    environment:
+      AI_ASSISTANT_QDRANT_URL: http://qdrant:6333
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    profiles: ["tools"]
+
+  smoke-test:
+    build: *app-build
+    command: python docker/smoke_test.py
+    env_file: .env
+    environment:
+      AI_ASSISTANT_WHISPER_HOST: whisper
+      AI_ASSISTANT_LLM_HOST: llm
+      AI_ASSISTANT_TTS_HOST: tts
+      AI_ASSISTANT_INTENT_HOST: intent
+      AI_ASSISTANT_QDRANT_URL: http://qdrant:6333
+      # orchestrator/pipeline.py's streaming/llm_streamer.py talks to
+      # Ollama directly (bypassing the llm container's HTTP API), so this
+      # needs the same host.docker.internal override as the llm service.
+      AI_ASSISTANT_OLLAMA_API_URL: http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      whisper:
+        condition: service_healthy
+      llm:
+        condition: service_healthy
+      tts:
+        condition: service_healthy
+      intent:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    profiles: ["tools"]
+
+volumes:
+  qdrant-data:
+  whisper-hf-cache:
