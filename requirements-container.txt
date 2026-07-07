@@ -1,0 +1,27 @@
+# Container build only. Native Windows dev still uses requirements.txt
+# (with onnxruntime-directml) via setup.ps1 — do not merge these.
+#
+# Differences from requirements.txt:
+#   - onnxruntime-directml (Windows/DirectML-only) -> onnxruntime (CPU)
+#   - sounddevice, miniaudio omitted: both are already guarded with
+#     try/except ImportError in services/tts_service.py and
+#     services/audio_playback_engine.py (server-side local audio playback
+#     isn't used in a hosted deployment; the client plays TTS audio back).
+#     Omitting avoids needing native PortAudio system libs in the image.
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+pydantic==2.8.2
+pydantic-settings==2.4.0
+httpx==0.27.0
+requests==2.32.3
+numpy==1.26.4
+torch==2.4.1
+ctranslate2==4.4.0
+faster-whisper==1.0.3
+onnxruntime==1.18.0
+psutil==5.9.8
+python-multipart==0.0.9
+pytest==8.3.2
+qdrant-client==1.12.1
+sentence-transformers==3.0.1
+edge-tts==7.2.8
