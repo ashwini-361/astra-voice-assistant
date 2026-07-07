@@ -23,7 +23,7 @@ from duplex.speech_capture import CaptureDiagnostics, SpeechCapture
 from duplex.state_machine import AssistantStateController
 from duplex.stream_manager import ResponseStreamManager
 from duplex.vad_engine import VADEngine
-from core.config import get_settings
+from core.config import get_settings, resolve_host
 from memory.memory_manager import MemoryManager
 from orchestrator.memory_buffer import ConversationBuffer
 from orchestrator.pipeline import run_pipeline, run_pipeline_streaming
@@ -58,9 +58,9 @@ async def _check_service(url: str) -> bool:
 
 def _preflight_for_voice(max_wait_seconds: int = 90) -> None:
     settings = get_settings()
-    whisper_url = f"http://127.0.0.1:{settings.whisper_port}/health"
-    llm_url = f"http://127.0.0.1:{settings.llm_port}/health"
-    tts_url = f"http://127.0.0.1:{settings.tts_port}/health"
+    whisper_url = f"http://{resolve_host(settings.whisper_host)}:{settings.whisper_port}/health"
+    llm_url = f"http://{resolve_host(settings.llm_host)}:{settings.llm_port}/health"
+    tts_url = f"http://{resolve_host(settings.tts_host)}:{settings.tts_port}/health"
 
     deadline = time.perf_counter() + max_wait_seconds
     missing = ["whisper", "llm", "tts"]
@@ -83,7 +83,7 @@ def _preflight_for_voice(max_wait_seconds: int = 90) -> None:
 
 def _preflight_for_whisper(max_wait_seconds: int = 90) -> None:
     settings = get_settings()
-    whisper_url = f"http://127.0.0.1:{settings.whisper_port}/health"
+    whisper_url = f"http://{resolve_host(settings.whisper_host)}:{settings.whisper_port}/health"
     deadline = time.perf_counter() + max_wait_seconds
     while time.perf_counter() < deadline:
         if asyncio.run(_check_service(whisper_url)):
