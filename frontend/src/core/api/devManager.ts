@@ -1,4 +1,4 @@
-const API_BASE = 'http://127.0.0.1:3900';
+const API_BASE = import.meta.env.VITE_DEV_MANAGER_API_BASE ?? 'http://127.0.0.1:3900';
 
 export const checkHealth = async () => {
   const response = await fetch(`${API_BASE}/health`);

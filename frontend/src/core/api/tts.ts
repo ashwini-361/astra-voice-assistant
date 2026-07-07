@@ -1,4 +1,4 @@
-const API_BASE = 'http://127.0.0.1:8003';
+const API_BASE = import.meta.env.VITE_TTS_API_BASE ?? 'http://127.0.0.1:8003';
 
 /**
  * Synthesize speech and return audio blob for browser playback.

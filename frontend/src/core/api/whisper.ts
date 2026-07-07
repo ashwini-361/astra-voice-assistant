@@ -1,4 +1,4 @@
-const API_BASE = 'http://127.0.0.1:8001';
+const API_BASE = import.meta.env.VITE_WHISPER_API_BASE ?? 'http://127.0.0.1:8001';
 
 /**
  * Transcribe audio via Whisper backend.

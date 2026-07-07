@@ -71,7 +71,7 @@ interface MCPStore {
   toggleDockerTool: (name: string) => Promise<void>;
 }
 
-const LLM_BASE = 'http://127.0.0.1:8002';
+const LLM_BASE = import.meta.env.VITE_LLM_API_BASE ?? 'http://127.0.0.1:8002';
 
 const defaultDockerForm: MCPAddDockerForm = {
   name: '',
