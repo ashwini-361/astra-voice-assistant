@@ -1,0 +1,64 @@
+name: Docker Compose Smoke Test
+
+# CPU-only (GitHub-hosted runners have no GPU) — validates that the Phase
+# W-1 Docker Compose stack still builds, starts healthy, and passes the
+# real end-to-end smoke test (intent -> LLM -> TTS) on every PR, so future
+# changes can't silently break the reproducible dev environment.
+#
+# Ollama isn't part of docker-compose.yml (it stays native/external on a
+# dev machine — see docs/ASTRA_WEB_SERVICE_PLAN.md), so CI runs it as a
+# service container and pulls a small local model instead of using cloud
+# auth, which isn't available/appropriate on a public runner.
+
+on:
+  push:
+    branches: [dev-init, main]
+  pull_request:
+    branches: [dev-init, main]
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    services:
+      ollama:
+        image: ollama/ollama:latest
+        ports:
+          - 11434:11434
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pull a small model into the CI Ollama service
+        run: |
+          curl -s http://localhost:11434/api/pull \
+            -d '{"name":"qwen2.5:0.5b","stream":false}' \
+            --max-time 300
+
+      - name: Create CI .env (small local model, not cloud)
+        run: |
+          cp .env.example .env
+          sed -i 's/^AI_ASSISTANT_LLM_MODEL=.*/AI_ASSISTANT_LLM_MODEL=qwen2.5:0.5b/' .env
+
+      - name: Build images
+        run: docker compose build
+
+      - name: Start stack and wait for all services healthy
+        run: docker compose up -d --wait --wait-timeout 300
+
+      - name: Show container status
+        if: always()
+        run: docker compose ps
+
+      - name: Seed Qdrant
+        run: docker compose --profile tools run --rm seed
+
+      - name: Run smoke test
+        run: docker compose --profile tools run --rm smoke-test
+
+      - name: Dump service logs on failure
+        if: failure()
+        run: docker compose logs
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
