@@ -1,7 +1,13 @@
-"""Interactive speech recognition test.
+"""Manual, interactive speech recognition check.
 
 Displays text for you to speak, records your voice, and transcribes it
-to verify the speech recognition is working.
+to verify the speech recognition is working. Requires a real microphone
+and a running Whisper service on 127.0.0.1:8001 -- not a pytest test
+(deliberately not named test_*.py / test_* function, and lives outside
+tests/, so it is never collected by CI or `pytest tests`).
+
+Run directly:
+    python scripts/manual_speech_recognition_test.py
 """
 
 import sys
@@ -31,7 +37,7 @@ TEST_SENTENCES = [
 ]
 
 
-def test_speech_recognition():
+def run_speech_recognition_check():
     """Interactive speech recognition test."""
     print("\n" + "="*70)
     print("🎤 SPEECH RECOGNITION TEST")
@@ -184,8 +190,8 @@ def test_speech_recognition():
     # Option to test again
     again = input("Test again? (y/n): ").strip().lower()
     if again == 'y':
-        test_speech_recognition()
+        run_speech_recognition_check()
 
 
 if __name__ == "__main__":
-    test_speech_recognition()
+    run_speech_recognition_check()

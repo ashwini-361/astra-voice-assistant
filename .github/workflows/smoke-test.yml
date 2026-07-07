@@ -17,6 +17,21 @@ on:
     branches: [dev-init, main]
 
 jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install CPU-only test dependencies
+        run: pip install -r requirements-container.txt
+
+      - name: Run pytest
+        run: python -m pytest tests -q
+
   smoke-test:
     runs-on: ubuntu-latest
     services:
