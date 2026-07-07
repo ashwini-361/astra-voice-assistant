@@ -21,8 +21,8 @@ Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
 
 | Tool | Use when |
 |------|----------|
-| `detect_changes` | Reviewing code changes — gives risk-scored analysis |
-| `get_review_context` | Need source snippets for review — token-efficient |
+| `detect_changes` | Reviewing code changes ï¿½ gives risk-scored analysis |
+| `get_review_context` | Need source snippets for review ï¿½ token-efficient |
 | `get_impact_radius` | Understanding blast radius of a change |
 | `get_affected_flows` | Finding which execution paths are impacted |
 | `query_graph` | Tracing callers, callees, imports, tests, dependencies |
@@ -36,6 +36,16 @@ Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
 2. Use `detect_changes` for code review.
 3. Use `get_affected_flows` to understand impact.
 4. Use `query_graph` pattern="tests_for" to check coverage.
+
+---
+
+## Commit conventions
+
+- Do **not** add a `Co-Authored-By: Claude ... <noreply@anthropic.com>` (or
+  any Claude/Anthropic) trailer to commit messages in this repo.
+- When a change adds or changes architectural decisions, update
+  `docs/architecture/` (ADRs) and/or the relevant plan doc in `docs/` in
+  the same change â€” don't let project-structure docs drift from the code.
 
 ---
 
