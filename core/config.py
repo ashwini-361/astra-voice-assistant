@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     intent_port: int = Field(default=8004)
     intent_model_path: str = Field(default="models/intent.onnx")
 
+    qdrant_url: AnyHttpUrl = Field(default="http://127.0.0.1:6333")
+
     # Input microphone device: empty = OS default. Set to a substring of the
     # device name (e.g. "AMD Audio Device") or a numeric sounddevice index.
     # Some Windows mic arrays (e.g. combined webcam+mic modules) silently
@@ -67,3 +69,14 @@ class Settings(BaseSettings):
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     return Settings()
+
+
+def resolve_host(host: str) -> str:
+    """Normalize a bind-all host to a connectable one for client calls.
+
+    Services bind to 0.0.0.0/:: so they're reachable from other containers,
+    but a caller on the same machine must dial 127.0.0.1 instead. In Docker
+    Compose, host fields are overridden to the service name (e.g. "llm"),
+    which passes through unchanged here.
+    """
+    return "127.0.0.1" if host in ("0.0.0.0", "::") else host
