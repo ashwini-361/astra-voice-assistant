@@ -1,17 +1,21 @@
 """Lightweight vector store wrapper using local Qdrant.
 
 Connection strategy:
-1. Try HTTP mode (http://127.0.0.1:6333) — avoids file-lock conflicts when
-   multiple processes (LLM service + orchestrator) access Qdrant simultaneously.
+1. Try HTTP mode (core.config.Settings.qdrant_url, default http://127.0.0.1:6333)
+   — avoids file-lock conflicts when multiple processes (LLM service +
+   orchestrator) access Qdrant simultaneously. In Docker Compose this is set
+   to the qdrant service's container address.
 2. Fall back to local file mode (./qdrant_data) if HTTP is unavailable.
 """
 import logging
 import uuid
 from typing import List
 
+from core.config import get_settings
+
 logger = logging.getLogger(__name__)
 
-QDRANT_HTTP_URL = "http://127.0.0.1:6333"
+QDRANT_HTTP_URL = str(get_settings().qdrant_url)
 
 
 def _make_client(collection_name: str, dim: int):
