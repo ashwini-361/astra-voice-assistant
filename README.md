@@ -83,13 +83,16 @@ natively (`npm run dev`).
 # One-time: install `make` if you don't have it (choco install make, or
 # scoop install make). Without make, run the docker compose commands
 # shown in each Makefile target directly instead.
-copy .env.example .env
-ollama serve   # Ollama stays native — see "Architecture" below
-make up        # or: make up-gpu   (GPU passthrough for whisper)
-docker compose ps   # wait for all 5 services to show "healthy"
+ollama serve                # Ollama stays native — see "Architecture" below
+ollama pull qwen2.5:3b      # small local model .env.example is validated against
+make up                     # or: make up-gpu   (GPU passthrough for whisper)
+                            # creates .env from .env.example on first run,
+                            # then waits for all 5 services to be healthy
 make seed
 make smoke
 ```
+`make up` copies `.env.example` to `.env` automatically if `.env` doesn't
+exist yet (see the `env` Makefile target) — no manual copy step needed.
 `make smoke` calls `/classify`, `/generate`, and `/synthesize` directly —
 the same endpoints the frontend uses (not `orchestrator/pipeline.py`'s
 `/speak`, which decodes+plays audio server-side via miniaudio/sounddevice,
