@@ -8,7 +8,7 @@ from typing import Any, AsyncIterator, Dict, Optional, Tuple
 import httpx
 from pydantic import BaseModel
 
-from core.config import get_settings
+from core.config import get_settings, resolve_host
 from duplex.audio_listener import AudioListener
 from duplex.interrupt_controller import InterruptController
 from duplex.state_machine import AssistantState, AssistantStateController
@@ -105,9 +105,7 @@ async def _post_json(client: httpx.AsyncClient, url: str, payload: Dict[str, Any
 async def _call_intent(client: httpx.AsyncClient, text: str) -> Tuple[str, float]:
     start = time.perf_counter()
     settings = get_settings()
-    host = settings.intent_host
-    if host in ("0.0.0.0", "::"):
-        host = "127.0.0.1"
+    host = resolve_host(settings.intent_host)
     url = f"{host}:{settings.intent_port}" if host.startswith("http") else f"http://{host}:{settings.intent_port}"
     try:
         data = await _post_json(client, f"{url}/classify", {"text": text})
@@ -124,9 +122,7 @@ async def _call_agent(text: str) -> Tuple[str, float]:
     """Mode A: call agent loop (non-stream) and return synthesized text."""
     start = time.perf_counter()
     settings = get_settings()
-    host = settings.llm_host
-    if host in ("0.0.0.0", "::"):
-        host = "127.0.0.1"
+    host = resolve_host(settings.llm_host)
     url = f"http://{host}:{settings.llm_port}"
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
@@ -145,9 +141,7 @@ async def _call_agent(text: str) -> Tuple[str, float]:
 async def _call_llm(client: httpx.AsyncClient, prompt: str) -> Tuple[str, float]:
     start = time.perf_counter()
     settings = get_settings()
-    host = settings.llm_host
-    if host in ("0.0.0.0", "::"):
-        host = "127.0.0.1"
+    host = resolve_host(settings.llm_host)
     url = f"{host}:{settings.llm_port}" if host.startswith("http") else f"http://{host}:{settings.llm_port}"
     data = await _post_json(client, f"{url}/generate", {"prompt": prompt})
     response_text = data.get("response", "")
@@ -171,9 +165,7 @@ async def _collect_llm_stream(prompt: str) -> Tuple[str, float]:
 async def _call_tts(client: httpx.AsyncClient, text: str) -> Tuple[Optional[int], float]:
     start = time.perf_counter()
     settings = get_settings()
-    host = settings.tts_host
-    if host in ("0.0.0.0", "::"):
-        host = "127.0.0.1"
+    host = resolve_host(settings.tts_host)
     url = f"{host}:{settings.tts_port}" if host.startswith("http") else f"http://{host}:{settings.tts_port}"
     data = await _post_json(client, f"{url}/speak", {"text": text})
     elapsed_ms = (time.perf_counter() - start) * 1000

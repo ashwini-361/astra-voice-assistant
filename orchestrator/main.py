@@ -97,7 +97,7 @@ def _preflight_for_whisper(max_wait_seconds: int = 90) -> None:
 
 async def _transcribe_wav_bytes(wav_bytes: bytes) -> str:
     settings = get_settings()
-    base_url = f"{settings.whisper_host}:{settings.whisper_port}" if settings.whisper_host.startswith("http") else f"http://127.0.0.1:{settings.whisper_port}"
+    base_url = f"http://{resolve_host(settings.whisper_host)}:{settings.whisper_port}"
     last_exc: Exception | None = None
     async with httpx.AsyncClient(timeout=60.0) as client:
         for attempt in range(1, 4):
@@ -270,11 +270,7 @@ async def _run_duplex_async(
     import requests as _requests
 
     settings = get_settings()
-    _tts_stop_url = (
-        f"{settings.tts_host}:{settings.tts_port}"
-        if settings.tts_host.startswith("http")
-        else f"http://127.0.0.1:{settings.tts_port}"
-    )
+    _tts_stop_url = f"http://{resolve_host(settings.tts_host)}:{settings.tts_port}"
 
     def _barge_in_stop() -> None:
         """Fire-and-forget TTS /stop from the audio callback thread."""

@@ -16,8 +16,8 @@ class RuntimeSettings(BaseModel):
     stream: bool = False
     voice_mode: bool = False
     ollama_url: str
-    lmstudio_url: str = "http://127.0.0.1:1234"
-    openai_url: str = "https://api.openai.com/v1"
+    lmstudio_url: str
+    openai_url: str
     openai_api_key: str = ""
     custom_url: str = ""
     custom_api_key: str = ""

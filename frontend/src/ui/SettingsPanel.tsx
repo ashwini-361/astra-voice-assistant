@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useSettingsStore } from '../core/state/settingsStore';
 
+const OLLAMA_API_BASE = import.meta.env.VITE_OLLAMA_API_BASE ?? 'http://127.0.0.1:11434';
+
 export const SettingsPanel = () => {
   const {
     isSettingsOpen, setSettingsOpen,
@@ -20,7 +22,7 @@ export const SettingsPanel = () => {
       setLoadingModels(true);
       setErrorModels('');
       try {
-        const response = await fetch('http://127.0.0.1:11434/api/tags');
+        const response = await fetch(`${OLLAMA_API_BASE}/api/tags`);
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         const data = await response.json();
         
