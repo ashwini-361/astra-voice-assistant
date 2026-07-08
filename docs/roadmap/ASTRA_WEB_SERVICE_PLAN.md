@@ -74,7 +74,7 @@ Before shipping anything, make the whole system start with one command. You'll t
 
 ---
 
-### Phase B — Architecture freeze *(new, done before W0)*
+### Phase B — Architecture freeze *(new, before W0)*
 
 Not in the original phase order above — inserted between repo hardening
 (Phase W-1 / "Phase A" in project shorthand) and AWS setup, so cloud
@@ -86,7 +86,7 @@ explicitly excluded (still consolidating, deferred to Phase W5/W6);
 Docker Compose is declared the canonical, AWS-bound startup path over
 the native `start_stack.ps1`/`dev_manager.py` paths.
 
-**Exit:** ADR-006 accepted and merged (done).
+**Exit:** ADR-006 accepted and merged into `dev-init`.
 
 ---
 
