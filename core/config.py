@@ -68,7 +68,7 @@ class Settings(BaseSettings):
     # device name (e.g. "AMD Audio Device") or a numeric sounddevice index.
     # Some Windows mic arrays (e.g. combined webcam+mic modules) silently
     # deliver zero signal even though the stream opens without error, so the
-    # OS default is not always usable — use select_mic_device.py to test and set this.
+    # OS default is not always usable — use scripts/select_mic_device.py to test and set this.
     mic_device: str = Field(default="")
 
     log_level: str = Field(default="INFO")

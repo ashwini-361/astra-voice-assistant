@@ -17,12 +17,12 @@ Updated `mcp_config.json` to include `OBSIDIAN_API_URL` environment variable wit
       "OBSIDIAN_HOST": "host.docker.internal",
       "OBSIDIAN_PORT": "27124",
       "OBSIDIAN_PROTOCOL": "https",
-      "OBSIDIAN_API_KEY": "56787bd1a0cc0105dcaf20cdfc24d0d52b4cd865ee7f4e0ef5c109dd33955f21"
+      "OBSIDIAN_API_KEY": "REPLACE_WITH_YOUR_OBSIDIAN_API_KEY"
     },
     "args": [
       "run", "-i", "--rm",
       "-e", "OBSIDIAN_API_URL=https://host.docker.internal:27124",
-      "-e", "OBSIDIAN_API_KEY=56787bd1a0cc0105dcaf20cdfc24d0d52b4cd865ee7f4e0ef5c109dd33955f21",
+      "-e", "OBSIDIAN_API_KEY=REPLACE_WITH_YOUR_OBSIDIAN_API_KEY",
       "-e", "OBSIDIAN_PROTOCOL=https",
       "-v", "C:/Users/hp/Documents/ObsidianVault:/vault",
       "mcp/obsidian"
@@ -37,7 +37,7 @@ The curl test from the terminal proved that `host.docker.internal:27124` works c
 ```bash
 docker run --rm curlimages/curl \
   curl -k https://host.docker.internal:27124/vault/ \
-  -H "Authorization: Bearer 56787bd1a0cc0105dcaf20cdfc24d0d52b4cd865ee7f4e0ef5c109dd33955f21"
+  -H "Authorization: Bearer REPLACE_WITH_YOUR_OBSIDIAN_API_KEY"
 ```
 
 Result: Successfully returned the file list.
