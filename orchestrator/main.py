@@ -23,7 +23,7 @@ from duplex.speech_capture import CaptureDiagnostics, SpeechCapture
 from duplex.state_machine import AssistantStateController
 from duplex.stream_manager import ResponseStreamManager
 from duplex.vad_engine import VADEngine
-from core.auth import local_service_auth_headers
+from core.auth import LOCAL_USER_ID, local_service_auth_headers
 from core.config import get_settings, resolve_host
 from memory.memory_manager import MemoryManager
 from orchestrator.memory_buffer import ConversationBuffer
@@ -294,7 +294,7 @@ async def _run_duplex_async(
     # ── Pre-warm the embedding model (lazy-loads on first call) ────────
     logger.info("[duplex] Pre-warming embedding model…")
     memory_manager = MemoryManager()
-    await loop.run_in_executor(None, memory_manager.retrieve, "warmup")
+    await loop.run_in_executor(None, lambda: memory_manager.retrieve("warmup", user_id=LOCAL_USER_ID))
     logger.info("[duplex] Embedding model ready")
 
     pipeline_task: asyncio.Task | None = None

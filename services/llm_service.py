@@ -965,6 +965,7 @@ async def agent_loop(request: AgentLoopRequest, user_id: str = Depends(get_curre
             user_query=request.prompt,
             max_steps=max_steps,
             llm_call=_phase2_llm_call,
+            user_id=user_id,
             execute_fn=_phase2_execute,
         )
         llm_metrics.record_success(time.perf_counter() - start, str(payload.get("response", "")))

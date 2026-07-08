@@ -9,13 +9,13 @@ from orchestrator import pipeline
 
 
 class _FakeMemory:
-    def retrieve(self, query: str):  # pylint: disable=unused-argument
+    def retrieve(self, query: str, user_id: str):  # pylint: disable=unused-argument
         return ["Memory 1"]
 
     def format_memories(self, memories):
         return " | ".join(memories)
 
-    def add_interaction(self, user_text: str, assistant_text: str):  # pylint: disable=unused-argument
+    def add_interaction(self, user_text: str, assistant_text: str, user_id: str):  # pylint: disable=unused-argument
         return None
 
 

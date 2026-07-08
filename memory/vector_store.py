@@ -21,7 +21,7 @@ QDRANT_HTTP_URL = str(get_settings().qdrant_url)
 def _make_client(collection_name: str, dim: int):
     """Return a QdrantClient, preferring HTTP over local file."""
     from qdrant_client import QdrantClient
-    from qdrant_client.models import Distance, VectorParams
+    from qdrant_client.models import Distance, PayloadSchemaType, VectorParams
 
     # Try HTTP first (no file lock, safe for multi-process)
     try:
@@ -33,10 +33,32 @@ def _make_client(collection_name: str, dim: int):
         client = QdrantClient(path="./qdrant_data")
 
     collections = [c.name for c in client.get_collections().collections]
+    if collection_name in collections:
+        # Pre-PR2 data has no user_id payload field/index -- there's no
+        # principled way to attribute it to a real user after the fact, so
+        # per docs/api/memory.md this is a deliberate wipe+recreate, not a
+        # migration (local developer/demo data only).
+        existing_indexes = client.get_collection(collection_name).payload_schema
+        if "user_id" not in existing_indexes:
+            logger.warning(
+                "[vector-store] recreating '%s' collection for per-user isolation "
+                "(pre-PR2 data has no user_id field -- wiped, not migrated)",
+                collection_name,
+            )
+            client.delete_collection(collection_name)
+            collections = []
+
     if collection_name not in collections:
         client.create_collection(
             collection_name=collection_name,
             vectors_config=VectorParams(size=dim, distance=Distance.COSINE),
+        )
+        # Per-user isolation (docs/api/memory.md): a payload index on
+        # user_id keeps query_filter-ed search fast as data grows.
+        client.create_payload_index(
+            collection_name=collection_name,
+            field_name="user_id",
+            field_schema=PayloadSchemaType.KEYWORD,
         )
     return client
 
@@ -52,7 +74,7 @@ class VectorStore:
             self._client = _make_client(self.collection_name, self._dim)
         return self._client
 
-    def upsert(self, doc_id: str, vector: List[float], text: str) -> None:
+    def upsert(self, doc_id: str, vector: List[float], text: str, user_id: str) -> str:
         from qdrant_client.models import PointStruct
         try:
             clean_id = doc_id.replace("mem-", "")
@@ -63,17 +85,20 @@ class VectorStore:
         try:
             self._get_client().upsert(
                 collection_name=self.collection_name,
-                points=[PointStruct(id=point_id, vector=vector, payload={"text": text})],
+                points=[PointStruct(id=point_id, vector=vector, payload={"text": text, "user_id": user_id})],
             )
         except Exception as exc:  # pylint: disable=broad-except
             logger.error("[vector-store] upsert failed: %s", exc)
             self._client = None  # reset so next call retries connection
+        return point_id
 
-    def search(self, vector: List[float], top_k: int = 3) -> List[str]:
+    def search(self, vector: List[float], user_id: str, top_k: int = 3) -> List[str]:
+        from qdrant_client.models import FieldCondition, Filter, MatchValue
         try:
             results = self._get_client().search(
                 collection_name=self.collection_name,
                 query_vector=vector,
+                query_filter=Filter(must=[FieldCondition(key="user_id", match=MatchValue(value=user_id))]),
                 limit=top_k,
             )
             return [hit.payload.get("text", "") for hit in results]

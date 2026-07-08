@@ -100,6 +100,7 @@ async def run_phase2_agent_loop(
     user_query: str,
     max_steps: int,
     llm_call: Callable[[str], str],
+    user_id: str,
     execute_fn: Optional[Callable[[PlannerAction], Any]] = None,
 ) -> Dict[str, Any]:
     bounded_steps = min(max(int(max_steps), 1), MAX_STEPS)
@@ -107,7 +108,7 @@ async def run_phase2_agent_loop(
 
     # ── Session memory: RAG retrieval at turn start ───────────────────
     session = AgentSessionMemory()
-    session.rag_context = await asyncio.to_thread(load_rag_context, user_query)
+    session.rag_context = await asyncio.to_thread(load_rag_context, user_query, user_id)
     _debug("rag_loaded", rag_context=session.rag_context[:200])
 
     catalog, unavailable = await load_catalog(_HEALTH)
@@ -712,7 +713,7 @@ async def run_phase2_agent_loop(
 
     # ── Persist to long-term memory for future RAG retrieval ────────────
     if final_response:
-        await asyncio.to_thread(save_agent_result, user_query, final_response)
+        await asyncio.to_thread(save_agent_result, user_query, final_response, user_id)
 
     return {
         "success": True,

@@ -8,7 +8,7 @@ from typing import Any, AsyncIterator, Dict, Optional, Tuple
 import httpx
 from pydantic import BaseModel
 
-from core.auth import local_service_auth_headers
+from core.auth import LOCAL_USER_ID, local_service_auth_headers
 from core.config import get_settings, resolve_host
 from duplex.audio_listener import AudioListener
 from duplex.interrupt_controller import InterruptController
@@ -203,7 +203,7 @@ async def run_pipeline(
 
             # Memory retrieval
             mem_start = time.perf_counter()
-            memories = memory_manager.retrieve(text)
+            memories = memory_manager.retrieve(text, user_id=LOCAL_USER_ID)
             memories_used = memory_manager.format_memories(memories)
             timings["memory_ms"] = (time.perf_counter() - mem_start) * 1000
 
@@ -227,7 +227,7 @@ async def run_pipeline(
 
             # Store memory after response (use clean text)
             embed_start = time.perf_counter()
-            memory_manager.add_interaction(text, clean_text)
+            memory_manager.add_interaction(text, clean_text, user_id=LOCAL_USER_ID)
             timings["embedding_ms"] = (time.perf_counter() - embed_start) * 1000
             assistant_text = clean_text
     except Exception as exc:  # pylint: disable=broad-except
@@ -315,7 +315,7 @@ async def run_pipeline_streaming(
 
     # ── Memory retrieval ─────────────────────────────────────────────
     mem_start = time.perf_counter()
-    memories = memory_manager.retrieve(text)
+    memories = memory_manager.retrieve(text, user_id=LOCAL_USER_ID)
     memories_used = memory_manager.format_memories(memories)
     timings["memory_ms"] = (time.perf_counter() - mem_start) * 1000
 
@@ -436,7 +436,7 @@ async def run_pipeline_streaming(
         if clean_text.strip():
             try:
                 embed_start = time.perf_counter()
-                memory_manager.add_interaction(text, clean_text)
+                memory_manager.add_interaction(text, clean_text, user_id=LOCAL_USER_ID)
                 timings["embedding_ms"] = (time.perf_counter() - embed_start) * 1000
             except Exception as exc:
                 logger.warning("Memory save failed (non-fatal): %s", exc)
