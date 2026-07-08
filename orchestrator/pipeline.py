@@ -8,6 +8,7 @@ from typing import Any, AsyncIterator, Dict, Optional, Tuple
 import httpx
 from pydantic import BaseModel
 
+from core.auth import LOCAL_USER_ID, local_service_auth_headers
 from core.config import get_settings, resolve_host
 from duplex.audio_listener import AudioListener
 from duplex.interrupt_controller import InterruptController
@@ -97,7 +98,7 @@ class PipelineResult(BaseModel):
 
 
 async def _post_json(client: httpx.AsyncClient, url: str, payload: Dict[str, Any], timeout: float = 15.0) -> Dict[str, Any]:
-    response = await client.post(url, json=payload, timeout=timeout)
+    response = await client.post(url, json=payload, timeout=timeout, headers=local_service_auth_headers())
     response.raise_for_status()
     return response.json()
 
@@ -200,9 +201,9 @@ async def run_pipeline(
                 buffer.add("assistant", assistant_text)
                 return PipelineResult(intent=intent, assistant_text=assistant_text, tts_status=None, timings_ms=timings)
 
-            # Memory retrieval
+            # Memory retrieval (off the event loop -- Postgres+Qdrant I/O, see agent_memory.py's identical pattern)
             mem_start = time.perf_counter()
-            memories = memory_manager.retrieve(text)
+            memories = await asyncio.to_thread(memory_manager.retrieve, text, user_id=LOCAL_USER_ID)
             memories_used = memory_manager.format_memories(memories)
             timings["memory_ms"] = (time.perf_counter() - mem_start) * 1000
 
@@ -224,9 +225,9 @@ async def run_pipeline(
             tts_status, tts_ms = await _call_tts(client, prosody_text)
             timings["tts_ms"] = tts_ms
 
-            # Store memory after response (use clean text)
+            # Store memory after response (use clean text), off the event loop
             embed_start = time.perf_counter()
-            memory_manager.add_interaction(text, clean_text)
+            await asyncio.to_thread(memory_manager.add_interaction, text, clean_text, user_id=LOCAL_USER_ID)
             timings["embedding_ms"] = (time.perf_counter() - embed_start) * 1000
             assistant_text = clean_text
     except Exception as exc:  # pylint: disable=broad-except
@@ -312,9 +313,9 @@ async def run_pipeline_streaming(
         intent, intent_ms = await _call_intent(client, text)
         timings["intent_ms"] = intent_ms
 
-    # ── Memory retrieval ─────────────────────────────────────────────
+    # ── Memory retrieval (off the event loop -- Postgres+Qdrant I/O) ──
     mem_start = time.perf_counter()
-    memories = memory_manager.retrieve(text)
+    memories = await asyncio.to_thread(memory_manager.retrieve, text, user_id=LOCAL_USER_ID)
     memories_used = memory_manager.format_memories(memories)
     timings["memory_ms"] = (time.perf_counter() - mem_start) * 1000
 
@@ -435,7 +436,7 @@ async def run_pipeline_streaming(
         if clean_text.strip():
             try:
                 embed_start = time.perf_counter()
-                memory_manager.add_interaction(text, clean_text)
+                await asyncio.to_thread(memory_manager.add_interaction, text, clean_text, user_id=LOCAL_USER_ID)
                 timings["embedding_ms"] = (time.perf_counter() - embed_start) * 1000
             except Exception as exc:
                 logger.warning("Memory save failed (non-fatal): %s", exc)

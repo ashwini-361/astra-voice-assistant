@@ -33,6 +33,7 @@ from typing import Any, Optional
 
 import httpx
 
+from core.auth import local_service_auth_headers
 from core.config import get_settings, resolve_host
 from duplex.interrupt_controller import InterruptController
 
@@ -267,7 +268,7 @@ class ResponseStreamManager:
         )
         try:
             async with httpx.AsyncClient(timeout=2.0) as client:
-                await client.post(f"{url}/api/v1/voice/playback/stop")
+                await client.post(f"{url}/api/v1/voice/playback/stop", headers=local_service_auth_headers())
             logger.debug("[RSM] TTS stop sent")
         except Exception:  # pylint: disable=broad-except
             pass  # best-effort; TTS may not be running

@@ -6,12 +6,13 @@ import os
 import tempfile
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
+from core.auth import get_current_user_id
 from core.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -150,7 +151,7 @@ async def _transcribe_file(temp_path: str):
 
 
 @app.post("/api/v1/voice/transcriptions", response_model=TranscriptionResponse)
-async def transcribe(audio_file: UploadFile = File(...)) -> JSONResponse:
+async def transcribe(audio_file: UploadFile = File(...), user_id: str = Depends(get_current_user_id)) -> JSONResponse:
     if audio_file.content_type and not audio_file.content_type.startswith("audio"):
         raise HTTPException(status_code=400, detail="Invalid file type")
 

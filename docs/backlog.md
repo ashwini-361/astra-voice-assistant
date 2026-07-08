@@ -4,6 +4,68 @@ Things noticed during work that are out of scope for the task at hand.
 Not a roadmap -- just a parking lot so they aren't lost or fixed as
 scope creep.
 
+## Deferred from PR2 (2026-07-09): memory-layer follow-ups
+
+Found via `/code-review` medium (8 finder angles, high convergence).
+The critical finding (native voice loop hard-crashing on turn one if
+`make seed` was never run) and the event-loop-blocking issue were fixed
+directly in PR2. Lower-priority items deferred here:
+
+- `memory/memory_manager.py`'s `_get_sync_engine()` re-derives the sync
+  (psycopg2) DSN via the same `.replace("+asyncpg", "+psycopg2")`
+  string-replace already in `db/migrations/env.py`'s `_sync_dsn()` --
+  should be a single shared helper (e.g. a `Settings.sync_postgres_dsn`
+  property or a `db/session.py` function) instead of duplicated in two
+  files. `docker/seed.py` also reaches into memory_manager.py's
+  underscore-prefixed `_get_sync_engine` as if it were public API.
+- `memory/memory_manager.py` uses a second, independently-pooled sync
+  SQLAlchemy engine alongside `db/session.py`'s async engine against
+  the same Postgres database -- not wrong, but if PR3's
+  `usage_counters` also reaches for its own sync engine "to match,"
+  there will be 3 separate connection pools to one database with no
+  shared pool-exhaustion story. Worth reconsidering whether
+  MemoryManager should eventually become async and share the app's one
+  engine.
+- `memory/vector_store.py`'s `_make_client()` wipe-and-recreate check
+  (for pre-PR2 collections missing the `user_id` payload index) runs
+  on every VectorStore construction, forever, not just once at PR2
+  rollout -- an extra Qdrant round-trip per `MemoryManager()`
+  instantiation (which happens per-turn in `agent_memory.py`). Also not
+  guarded against a concurrent-startup race (two processes both
+  deciding to wipe at once). Intentional per docs/api/memory.md and
+  ADR-007, but could be tightened to a one-off script instead of
+  permanent hot-path logic.
+- `memory/memory_manager.py`'s `add_interaction()` does two Postgres
+  commits (rows, then `qdrant_point_id` backfill) to protect against a
+  Qdrant failure between them -- but `VectorStore.upsert()` currently
+  swallows all exceptions internally and always returns a point_id, so
+  the second commit's protection is largely theoretical as written. If
+  `embed()` itself raises (not currently caught), the assistant's row
+  is left with `qdrant_point_id = NULL` permanently, silently dropping
+  that turn from future semantic search with no reconciliation job.
+- `.amazonq/rules/memory-bank/structure.md` (auto-generated) still
+  shows the pre-PR2 signatures for `load_rag_context`/`save_agent_result`
+  without the now-required `user_id` param -- cosmetic, regenerate
+  whenever that doc is next refreshed.
+
+## Deferred from PR1B (2026-07-08): frontend OAuth wiring
+
+Auth is now enforced backend-side on every service route (except
+`/health`). The frontend (`frontend/src/core/api/*.ts`) does not yet:
+- Have a login button / OAuth redirect handling for
+  `/api/v1/auth/login/{provider}` and `/api/v1/auth/callback/{provider}`.
+- Store or attach a JWT (`Authorization: Bearer ...`) to any of its
+  existing `fetch` calls.
+- Handle access-token expiry / call `/api/v1/auth/refresh`.
+
+This was a deliberate scope cut for PR1B (backend auth enforcement first,
+per the approved Phase C plan) -- until this lands, `npm run dev` against
+the live backend will 401 on every call. The native voice loop and
+`make smoke`/`make seed` are unaffected (they use
+`core.auth.create_local_service_token()`, see `docs/api/auth.md`). Needs
+its own follow-up PR before the web service is actually usable through a
+browser.
+
 ## Found during Phase A test stabilization (2026-07-08)
 
 Pre-existing test failures in `services/agent_control` and

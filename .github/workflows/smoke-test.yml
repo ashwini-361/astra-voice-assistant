@@ -72,8 +72,20 @@ jobs:
         if: always()
         run: docker compose ps
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-container.txt
+
+      - name: Install CPU-only test dependencies
+        run: pip install -r requirements-container.txt
+
       - name: Seed Qdrant
         run: docker compose --profile tools run --rm seed
+
+      - name: Run memory isolation tests against the live stack
+        run: python -m pytest tests/test_memory_isolation.py -v
 
       - name: Run smoke test
         run: docker compose --profile tools run --rm smoke-test

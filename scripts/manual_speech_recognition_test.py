@@ -18,6 +18,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import requests
+
+from core.auth import local_service_auth_headers
 from duplex.vad_engine import VADEngine
 from duplex.speech_capture import SpeechCapture
 
@@ -132,6 +134,7 @@ def run_speech_recognition_check():
         response = requests.post(
             "http://127.0.0.1:8001/api/v1/voice/transcriptions",
             files={"audio_file": ("speech.wav", wav_bytes, "audio/wav")},
+            headers=local_service_auth_headers(),
             timeout=30,
         )
         

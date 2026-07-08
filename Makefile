@@ -26,7 +26,7 @@ down: ## Stop and remove all containers
 logs: ## Tail logs from all services
 	docker compose logs -f
 
-seed: env ## Seed Qdrant with sample memory entries
+seed: migrate ## Seed Postgres + Qdrant with sample memory entries
 	docker compose --profile tools run --rm seed
 
 smoke: env ## Run the end-to-end smoke test against the running stack

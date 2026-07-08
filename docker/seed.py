@@ -1,15 +1,20 @@
-"""Seed Qdrant with a few sample memories so a fresh clone has non-empty
-retrieval to demonstrate. Run via: docker compose --profile tools run --rm seed
-(or `make seed`).
+"""Seed Postgres + Qdrant with a few sample memories so a fresh clone has
+non-empty retrieval to demonstrate. Run via:
+docker compose --profile tools run --rm seed (or `make seed`).
 
-Deliberately does NOT seed a "test user" — there is no user/auth concept in
-the codebase yet (see docs/roadmap/ASTRA_WEB_SERVICE_PLAN.md Phase W3). This just
-proves the memory pipeline (embed -> Qdrant upsert -> retrieve) works
-end-to-end against the composed Qdrant container.
+Seeds under the reserved local/service user (core.auth.LOCAL_USER_ID,
+same identity the native voice loop and make smoke authenticate as --
+see docs/api/auth.md) since conversations.user_id is now a required FK
+into users(id). The row itself is guaranteed to already exist by
+db/migrations/versions/76936a1ecf9d_seed_reserved_local_user.py (`make
+seed` depends on `make migrate`) -- this script just proves the memory
+pipeline (Postgres insert -> embed -> Qdrant upsert -> retrieve) works
+end-to-end against the composed Postgres+Qdrant containers.
 """
 import logging
 import sys
 
+from core.auth import LOCAL_USER_ID
 from memory.memory_manager import MemoryManager
 
 logging.basicConfig(level=logging.INFO)
@@ -26,14 +31,14 @@ def main() -> int:
     try:
         manager = MemoryManager()
     except Exception as exc:  # pylint: disable=broad-except
-        logger.error("Could not initialize MemoryManager (Qdrant unreachable?): %s", exc)
+        logger.error("Could not initialize MemoryManager (Postgres/Qdrant unreachable?): %s", exc)
         return 1
 
     for user_text, assistant_text in SAMPLE_INTERACTIONS:
-        manager.add_interaction(user_text, assistant_text)
+        manager.add_interaction(user_text, assistant_text, user_id=LOCAL_USER_ID)
         logger.info("Seeded: %r -> %r", user_text, assistant_text)
 
-    results = manager.retrieve("what is your name", top_k=1)
+    results = manager.retrieve("what is your name", user_id=LOCAL_USER_ID, top_k=1)
     if not results:
         logger.error("Seed completed but retrieval returned nothing — check Qdrant connectivity.")
         return 1

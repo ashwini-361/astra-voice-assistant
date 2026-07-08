@@ -167,7 +167,7 @@ class AgentSessionMemory:
         return "\n\n".join(parts) if parts else ""
 
 
-def load_rag_context(query: str) -> str:
+def load_rag_context(query: str, user_id: str) -> str:
     """Retrieve relevant long-term memories from Qdrant for the current query.
 
     Returns formatted memory string or '(no long-term memories)'.
@@ -176,14 +176,14 @@ def load_rag_context(query: str) -> str:
     try:
         from memory.memory_manager import MemoryManager
         mm = MemoryManager()
-        memories = mm.retrieve(query, top_k=3)
+        memories = mm.retrieve(query, user_id=user_id, top_k=3)
         return mm.format_memories(memories)
     except Exception as exc:  # pylint: disable=broad-except
         logger.warning("[agent-memory] RAG retrieval failed (non-fatal): %s", exc)
         return "(no long-term memories)"
 
 
-def save_agent_result(query: str, response: str) -> None:
+def save_agent_result(query: str, response: str, user_id: str) -> None:
     """Persist agent turn to long-term memory for future RAG retrieval.
 
     Non-fatal — logs warning on failure.
@@ -191,7 +191,7 @@ def save_agent_result(query: str, response: str) -> None:
     try:
         from memory.memory_manager import MemoryManager
         mm = MemoryManager()
-        mm.add_interaction(query, response)
+        mm.add_interaction(query, response, user_id=user_id)
         logger.info("[agent-memory] saved turn to long-term memory")
     except Exception as exc:  # pylint: disable=broad-except
         logger.warning("[agent-memory] memory save failed (non-fatal): %s", exc)

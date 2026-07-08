@@ -154,8 +154,11 @@ services:
     env_file: .env
     environment:
       AI_ASSISTANT_QDRANT_URL: http://qdrant:6333
+      AI_ASSISTANT_POSTGRES_DSN: postgresql+asyncpg://astra:astra@postgres:5432/astra
     depends_on:
       qdrant:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     profiles: ["tools"]
 
