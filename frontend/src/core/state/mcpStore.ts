@@ -115,9 +115,9 @@ export const useMCPStore = create<MCPStore>((set, get) => ({
     try {
       // Fetch both builtin/custom and docker servers in parallel
       const [mcpRes, dockerRes, dockerToolsRes] = await Promise.all([
-        fetch(`${LLM_BASE}/mcp/servers`).then((r) => r.json()).catch(() => ({ builtin: [], custom: [] })),
-        fetch(`${LLM_BASE}/mcp/docker/servers`).then((r) => r.json()).catch(() => ({ servers: [] })),
-        fetch(`${LLM_BASE}/mcp/docker/tools`).then((r) => r.json()).catch(() => ({ tools: [] })),
+        fetch(`${LLM_BASE}/api/v1/mcp/servers`).then((r) => r.json()).catch(() => ({ builtin: [], custom: [] })),
+        fetch(`${LLM_BASE}/api/v1/mcp/docker/servers`).then((r) => r.json()).catch(() => ({ servers: [] })),
+        fetch(`${LLM_BASE}/api/v1/mcp/docker/tools`).then((r) => r.json()).catch(() => ({ tools: [] })),
       ]);
 
       const dockerToolMap = new Map<string, string[]>();
@@ -218,7 +218,7 @@ export const useMCPStore = create<MCPStore>((set, get) => ({
         auto_start: true,
       };
 
-      const res = await fetch(`${LLM_BASE}/mcp/docker/servers`, {
+      const res = await fetch(`${LLM_BASE}/api/v1/mcp/docker/servers`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -258,7 +258,7 @@ export const useMCPStore = create<MCPStore>((set, get) => ({
         auth_header: addCustomForm.auth_header || null,
       };
 
-      const res = await fetch(`${LLM_BASE}/mcp/servers`, {
+      const res = await fetch(`${LLM_BASE}/api/v1/mcp/servers`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -281,8 +281,8 @@ export const useMCPStore = create<MCPStore>((set, get) => ({
     try {
       const url =
         type === 'docker'
-          ? `${LLM_BASE}/mcp/docker/servers/${encodeURIComponent(name)}`
-          : `${LLM_BASE}/mcp/servers/${encodeURIComponent(name)}`;
+          ? `${LLM_BASE}/api/v1/mcp/docker/servers/${encodeURIComponent(name)}`
+          : `${LLM_BASE}/api/v1/mcp/servers/${encodeURIComponent(name)}`;
 
       const res = await fetch(url, { method: 'DELETE' });
       if (!res.ok) {
@@ -298,7 +298,7 @@ export const useMCPStore = create<MCPStore>((set, get) => ({
   restartDockerServer: async (name: string) => {
     set({ loading: true, error: '' });
     try {
-      const res = await fetch(`${LLM_BASE}/mcp/docker/servers/${encodeURIComponent(name)}/restart`, {
+      const res = await fetch(`${LLM_BASE}/api/v1/mcp/docker/servers/${encodeURIComponent(name)}/restart`, {
         method: 'POST',
       });
       if (!res.ok) {
@@ -314,7 +314,7 @@ export const useMCPStore = create<MCPStore>((set, get) => ({
   toggleServerEnabled: async (name: string, enabled: boolean) => {
     set({ loading: true, error: '' });
     try {
-      const res = await fetch(`${LLM_BASE}/mcp/servers/${encodeURIComponent(name)}/enabled`, {
+      const res = await fetch(`${LLM_BASE}/api/v1/mcp/servers/${encodeURIComponent(name)}/enabled`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enabled }),
@@ -332,7 +332,7 @@ export const useMCPStore = create<MCPStore>((set, get) => ({
   toggleDockerTool: async (name: string) => {
     set({ loading: true, error: '' });
     try {
-      const res = await fetch(`${LLM_BASE}/tools/toggle`, {
+      const res = await fetch(`${LLM_BASE}/api/v1/tools/toggle`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ server: name }),

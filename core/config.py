@@ -31,6 +31,17 @@ class Settings(BaseSettings):
 
     qdrant_url: AnyHttpUrl = Field(default="http://127.0.0.1:6333")
 
+    # Gateway service (auth-only -- see docs/api/gateway.md; PR1A: skeleton
+    # + health only, no OAuth/JWT yet -- see PR1B)
+    gateway_host: str = Field(default="0.0.0.0")
+    gateway_port: int = Field(default=8000)
+
+    # Postgres (Phase C PR1A: infra only; users/conversations tables land
+    # in PR1B/PR2 respectively via Alembic)
+    postgres_dsn: str = Field(
+        default="postgresql+asyncpg://astra:astra@127.0.0.1:5432/astra"
+    )
+
     # Input microphone device: empty = OS default. Set to a substring of the
     # device name (e.g. "AMD Audio Device") or a numeric sounddevice index.
     # Some Windows mic arrays (e.g. combined webcam+mic modules) silently

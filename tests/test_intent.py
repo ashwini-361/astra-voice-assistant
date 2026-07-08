@@ -36,7 +36,7 @@ def test_classify(monkeypatch):
 
     with TestClient(intent_service.app) as client:
         start = time.perf_counter()
-        response = client.post("/classify", json={"text": "Turn on the lights"})
+        response = client.post("/api/v1/voice/intents", json={"text": "Turn on the lights"})
         latency = time.perf_counter() - start
 
     print(f"intent latency: {latency:.3f}s")

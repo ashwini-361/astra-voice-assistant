@@ -48,6 +48,17 @@ the agent loop touches per-user memory.
 *(was `/metrics`, `/health`)* `/health` unauthenticated (Compose
 healthchecks); `/api/v1/chat/metrics` requires auth.
 
+## MCP/tool-registry routes (`/api/v1/mcp/*`, `/api/v1/tools/toggle`)
+
+Bulk-prefixed only (`/mcp/... → /api/v1/mcp/...`), not individually
+renamed — this is exactly the surface ADR-006/ADR-007 exclude from the
+freeze (duplicate `/mcp/docker/call` alias, 3 overlapping tool
+registries, known logic bugs per `docs/backlog.md`). Not worth designing
+a resource-noun scheme for a surface that's still consolidating and may
+be reshaped entirely during the agent roadmap (Phase W5/W6). Gains
+`Depends(get_current_user_id)` in PR1B like everything else, for
+consistent quota/rate-limit accounting — no other behavior change.
+
 ## Per-user memory design (`memory/vector_store.py`, `memory/memory_manager.py`)
 
 Not HTTP endpoints — this is the internal contract PR2 implements,

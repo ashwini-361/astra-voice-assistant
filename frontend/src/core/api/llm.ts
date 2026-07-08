@@ -12,7 +12,7 @@ export const generateStream = async (
 
   console.log("Generating with payload:", payload);
 
-  return await fetch(`${API_BASE}/generate`, {
+  return await fetch(`${API_BASE}/api/v1/chat/completions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -21,7 +21,7 @@ export const generateStream = async (
 };
 
 export const stopGeneration = async (): Promise<void> => {
-  await fetch(`${API_BASE}/stop`, { method: 'POST' });
+  await fetch(`${API_BASE}/api/v1/chat/stop`, { method: 'POST' });
 };
 
 export interface AgentLoopResult {
@@ -40,7 +40,7 @@ export const callAgentLoop = async (
   if (provider && provider !== 'default') payload.provider = provider;
   if (model && model !== 'default') payload.model = model;
 
-  const res = await fetch(`${API_BASE}/agent/loop`, {
+  const res = await fetch(`${API_BASE}/api/v1/agent/loop`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),

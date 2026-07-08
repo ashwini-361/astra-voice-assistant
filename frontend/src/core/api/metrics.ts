@@ -9,7 +9,7 @@ export interface RawMetrics {
 }
 
 export const fetchMetrics = async (): Promise<RawMetrics> => {
-  const response = await fetch(`${API_BASE}/metrics`, { signal: AbortSignal.timeout(3000) });
+  const response = await fetch(`${API_BASE}/api/v1/chat/metrics`, { signal: AbortSignal.timeout(3000) });
   if (!response.ok) throw new Error(`Metrics fetch failed: ${response.status}`);
   return await response.json();
 };

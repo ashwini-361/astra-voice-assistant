@@ -366,7 +366,7 @@ class SynthesizeRequest(BaseModel):
     emotion: Optional[str] = None
 
 
-@app.post("/synthesize")
+@app.post("/api/v1/voice/speech")
 async def synthesize(request: SynthesizeRequest):
     """Return raw MP3 audio bytes for browser-side playback."""
     import edge_tts  # lazy import
@@ -435,7 +435,7 @@ async def synthesize(request: SynthesizeRequest):
         raise HTTPException(status_code=502, detail=f"Edge TTS failed: {exc}") from exc
 
 
-@app.post("/speak", response_model=SpeakResponse)
+@app.post("/api/v1/voice/playback", response_model=SpeakResponse)
 async def speak(request: SpeakRequest) -> SpeakResponse:
     """Synthesise and enqueue one TTS segment for ordered playback."""
     global _chunk_counter
@@ -490,7 +490,7 @@ async def speak(request: SpeakRequest) -> SpeakResponse:
     return SpeakResponse(accepted=True, backend_status=response.status_code, backend=backend)
 
 
-@app.post("/stop")
+@app.post("/api/v1/voice/playback/stop")
 async def stop_playback():
     """Immediately stop all active TTS audio playback."""
     global _current_generation, _chunk_counter
@@ -515,18 +515,18 @@ async def stop_playback():
     return {"stopped": True, "count": stopped, "generation": gen}
 
 
-@app.get("/health")
+@app.get("/api/v1/health")
 async def health():
     runtime = _load_runtime_settings()
     return {"status": "ok", "service": "tts", "backend": runtime.backend}
 
 
-@app.get("/settings")
+@app.get("/api/v1/voice/settings")
 async def get_runtime_settings():
     return _load_runtime_settings().model_dump()
 
 
-@app.post("/settings")
+@app.post("/api/v1/voice/settings")
 async def update_runtime_settings(update: TTSSettingsUpdate):
     with _runtime_lock:
         current = _runtime_settings.model_dump()
@@ -560,14 +560,14 @@ async def update_runtime_settings(update: TTSSettingsUpdate):
     return {"status": "updated", "settings": _load_runtime_settings().model_dump()}
 
 
-@app.post("/settings/reset")
+@app.post("/api/v1/voice/settings/reset")
 async def reset_runtime_settings():
     with _runtime_lock:
         globals()["_runtime_settings"] = _default_runtime_settings()
     return {"status": "reset", "settings": _load_runtime_settings().model_dump()}
 
 
-@app.get("/streaming-config")
+@app.get("/api/v1/voice/streaming-config")
 async def get_streaming_config():
     runtime = _load_runtime_settings()
     return {

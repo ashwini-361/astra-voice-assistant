@@ -92,7 +92,7 @@ async def _send_tts_segment(
             logger.debug("[tts-stream] gen=%d stale after lock - dropping segment", generation_id)
             return
         try:
-            resp = await client.post(f"{url}/speak", json=payload, timeout=30.0)
+            resp = await client.post(f"{url}/api/v1/voice/playback", json=payload, timeout=30.0)
             logger.info(
                 "[tts-stream] gen=%d chunk=%d sent segment (%d chars, words=%d, emotion=%s) -> %s",
                 generation_id,

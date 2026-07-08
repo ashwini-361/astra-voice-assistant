@@ -108,7 +108,7 @@ async def _call_intent(client: httpx.AsyncClient, text: str) -> Tuple[str, float
     host = resolve_host(settings.intent_host)
     url = f"{host}:{settings.intent_port}" if host.startswith("http") else f"http://{host}:{settings.intent_port}"
     try:
-        data = await _post_json(client, f"{url}/classify", {"text": text})
+        data = await _post_json(client, f"{url}/api/v1/voice/intents", {"text": text})
         intent = data.get("label", "unknown")
     except Exception as exc:  # pylint: disable=broad-except
         logger.warning("Intent service unavailable, defaulting to chat: %s", exc)
@@ -126,7 +126,7 @@ async def _call_agent(text: str) -> Tuple[str, float]:
     url = f"http://{host}:{settings.llm_port}"
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
-            data = await _post_json(client, f"{url}/agent/loop", {"prompt": text, "max_steps": 4}, timeout=60.0)
+            data = await _post_json(client, f"{url}/api/v1/agent/loop", {"prompt": text, "max_steps": 4}, timeout=60.0)
         response_text = str(data.get("response", "")).strip()
         if not response_text:
             response_text = "I was unable to find an answer using the available tools."
@@ -143,7 +143,7 @@ async def _call_llm(client: httpx.AsyncClient, prompt: str) -> Tuple[str, float]
     settings = get_settings()
     host = resolve_host(settings.llm_host)
     url = f"{host}:{settings.llm_port}" if host.startswith("http") else f"http://{host}:{settings.llm_port}"
-    data = await _post_json(client, f"{url}/generate", {"prompt": prompt})
+    data = await _post_json(client, f"{url}/api/v1/chat/completions", {"prompt": prompt})
     response_text = data.get("response", "")
     elapsed_ms = (time.perf_counter() - start) * 1000
     logger.info(json.dumps({"stage": "llm", "llm_ms": round(elapsed_ms, 2)}))
@@ -167,7 +167,7 @@ async def _call_tts(client: httpx.AsyncClient, text: str) -> Tuple[Optional[int]
     settings = get_settings()
     host = resolve_host(settings.tts_host)
     url = f"{host}:{settings.tts_port}" if host.startswith("http") else f"http://{host}:{settings.tts_port}"
-    data = await _post_json(client, f"{url}/speak", {"text": text})
+    data = await _post_json(client, f"{url}/api/v1/voice/playback", {"text": text})
     elapsed_ms = (time.perf_counter() - start) * 1000
     logger.info(json.dumps({"stage": "tts", "tts_ms": round(elapsed_ms, 2)}))
     return data.get("backend_status"), elapsed_ms

@@ -58,9 +58,9 @@ async def _check_service(url: str) -> bool:
 
 def _preflight_for_voice(max_wait_seconds: int = 90) -> None:
     settings = get_settings()
-    whisper_url = f"http://{resolve_host(settings.whisper_host)}:{settings.whisper_port}/health"
-    llm_url = f"http://{resolve_host(settings.llm_host)}:{settings.llm_port}/health"
-    tts_url = f"http://{resolve_host(settings.tts_host)}:{settings.tts_port}/health"
+    whisper_url = f"http://{resolve_host(settings.whisper_host)}:{settings.whisper_port}/api/v1/health"
+    llm_url = f"http://{resolve_host(settings.llm_host)}:{settings.llm_port}/api/v1/health"
+    tts_url = f"http://{resolve_host(settings.tts_host)}:{settings.tts_port}/api/v1/health"
 
     deadline = time.perf_counter() + max_wait_seconds
     missing = ["whisper", "llm", "tts"]
@@ -83,7 +83,7 @@ def _preflight_for_voice(max_wait_seconds: int = 90) -> None:
 
 def _preflight_for_whisper(max_wait_seconds: int = 90) -> None:
     settings = get_settings()
-    whisper_url = f"http://{resolve_host(settings.whisper_host)}:{settings.whisper_port}/health"
+    whisper_url = f"http://{resolve_host(settings.whisper_host)}:{settings.whisper_port}/api/v1/health"
     deadline = time.perf_counter() + max_wait_seconds
     while time.perf_counter() < deadline:
         if asyncio.run(_check_service(whisper_url)):
@@ -104,7 +104,7 @@ async def _transcribe_wav_bytes(wav_bytes: bytes) -> str:
         for attempt in range(1, 4):
             try:
                 files = {"audio_file": ("live.wav", wav_bytes, "audio/wav")}
-                response = await client.post(f"{base_url}/transcribe", files=files)
+                response = await client.post(f"{base_url}/api/v1/voice/transcriptions", files=files)
                 response.raise_for_status()
                 data = response.json()
                 return str(data.get("text", "")).strip()
@@ -282,7 +282,7 @@ async def _run_duplex_async(
         """Fire-and-forget TTS /stop from the audio callback thread."""
         def _do_stop():
             try:
-                _requests.post(f"{_tts_stop_url}/stop", timeout=1.0)
+                _requests.post(f"{_tts_stop_url}/api/v1/voice/playback/stop", timeout=1.0)
                 logger.debug("[barge-in] TTS /stop sent")
             except Exception:  # pylint: disable=broad-except
                 pass

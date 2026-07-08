@@ -111,7 +111,7 @@ def _softmax(logits: np.ndarray) -> np.ndarray:
     return exps / np.sum(exps)
 
 
-@app.post("/classify", response_model=IntentResponse)
+@app.post("/api/v1/voice/intents", response_model=IntentResponse)
 async def classify(request: IntentRequest) -> IntentResponse:
     if _fallback_mode or _session is None:
         label = _fallback_intent(request.text)
@@ -133,7 +133,7 @@ async def classify(request: IntentRequest) -> IntentResponse:
         raise HTTPException(status_code=500, detail="Intent classification failed") from exc
 
 
-@app.get("/health")
+@app.get("/api/v1/health")
 async def health():
     return {"status": "ok", "service": "intent", "fallback_mode": _fallback_mode}
 

@@ -39,7 +39,7 @@ def test_generate(monkeypatch):
 
     with TestClient(llm_service.app) as client:
         start = time.perf_counter()
-        response = client.post("/generate", json={"prompt": "hello"})
+        response = client.post("/api/v1/chat/completions", json={"prompt": "hello"})
         latency = time.perf_counter() - start
 
     print(f"llm latency: {latency:.3f}s")
@@ -54,7 +54,7 @@ def test_generate_stream(monkeypatch):
     monkeypatch.setattr(llm_service._http_session, "post", _fake_post)
 
     with TestClient(llm_service.app) as client:
-        response = client.post("/generate", json={"prompt": "hello", "stream": True})
+        response = client.post("/api/v1/chat/completions", json={"prompt": "hello", "stream": True})
 
     assert response.status_code == 200
     assert "echo:stream" in response.text
@@ -62,22 +62,22 @@ def test_generate_stream(monkeypatch):
 
 def test_settings_update_and_reset():
     with TestClient(llm_service.app) as client:
-        updated = client.post("/settings", json={"provider": "custom", "custom_url": "http://localhost:9999"})
+        updated = client.post("/api/v1/chat/settings", json={"provider": "custom", "custom_url": "http://localhost:9999"})
         assert updated.status_code == 200
         assert updated.json()["settings"]["provider"] == "custom"
 
-        current = client.get("/settings")
+        current = client.get("/api/v1/chat/settings")
         assert current.status_code == 200
         assert current.json()["provider"] == "custom"
 
-        reset = client.post("/settings/reset")
+        reset = client.post("/api/v1/chat/settings/reset")
         assert reset.status_code == 200
         assert reset.json()["settings"]["provider"] in {"ollama", "lmstudio", "openai", "custom"}
 
 
 def test_mcp_file_search_endpoint():
     with TestClient(llm_service.app) as client:
-        response = client.post("/mcp/files/search", json={"query": "LLM", "limit": 3, "path": "services"})
+        response = client.post("/api/v1/mcp/files/search", json={"query": "LLM", "limit": 3, "path": "services"})
     assert response.status_code == 200
     body = response.json()
     assert "matches" in body
@@ -86,8 +86,8 @@ def test_mcp_file_search_endpoint():
 def test_metrics_endpoint(monkeypatch):
     monkeypatch.setattr(llm_service._http_session, "post", _fake_post)
     with TestClient(llm_service.app) as client:
-        _ = client.post("/generate", json={"prompt": "metrics check"})
-        response = client.get("/metrics")
+        _ = client.post("/api/v1/chat/completions", json={"prompt": "metrics check"})
+        response = client.get("/api/v1/chat/metrics")
     assert response.status_code == 200
     body = response.json()
     assert "latency_ms" in body
@@ -119,7 +119,7 @@ def test_mcp_catalog_filters_unavailable_servers(monkeypatch):
     )
 
     with TestClient(llm_service.app) as client:
-        response = client.get("/mcp/catalog")
+        response = client.get("/api/v1/mcp/catalog")
 
     assert response.status_code == 200
     body = response.json()
@@ -174,7 +174,7 @@ def test_agent_loop_records_typed_tool_error(monkeypatch):
     monkeypatch.setattr(llm_service, "call_tool", _fail_tool)
 
     with TestClient(llm_service.app) as client:
-        response = client.post("/agent/loop", json={"prompt": "test mcp loop", "max_steps": 2})
+        response = client.post("/api/v1/agent/loop", json={"prompt": "test mcp loop", "max_steps": 2})
 
     assert response.status_code == 200
     body = response.json()
@@ -213,31 +213,31 @@ def test_normalize_action_dot_notation():
 
 def test_disabled_builtin_tool_returns_error():
     with TestClient(llm_service.app) as client:
-        toggle = client.patch("/mcp/servers/browser-search/enabled", json={"enabled": False})
+        toggle = client.patch("/api/v1/mcp/servers/browser-search/enabled", json={"enabled": False})
         assert toggle.status_code == 200
 
         response = client.post(
-            "/mcp/tools/call",
+            "/api/v1/mcp/tools/call",
             json={"server": "browser-search", "tool": "search_web", "arguments": {"query": "x"}},
         )
         assert response.status_code == 400
         assert "disabled" in str(response.json().get("detail", "")).lower()
 
-        reenable = client.patch("/mcp/servers/browser-search/enabled", json={"enabled": True})
+        reenable = client.patch("/api/v1/mcp/servers/browser-search/enabled", json={"enabled": True})
         assert reenable.status_code == 200
 
 
 def test_toggle_builtin_server_reflected_in_list():
     with TestClient(llm_service.app) as client:
-        disable = client.patch("/mcp/servers/browser-search/enabled", json={"enabled": False})
+        disable = client.patch("/api/v1/mcp/servers/browser-search/enabled", json={"enabled": False})
         assert disable.status_code == 200
 
-        listed = client.get("/mcp/servers")
+        listed = client.get("/api/v1/mcp/servers")
         assert listed.status_code == 200
         browser = next(s for s in listed.json()["builtin"] if s["name"] == "browser-search")
         assert browser["enabled"] is False
 
-        enable = client.patch("/mcp/servers/browser-search/enabled", json={"enabled": True})
+        enable = client.patch("/api/v1/mcp/servers/browser-search/enabled", json={"enabled": True})
         assert enable.status_code == 200
 
 
@@ -286,7 +286,7 @@ def test_agent_loop_returns_uniform_response_contract(monkeypatch):
     monkeypatch.setattr(llm_service.mcp_bridge, "list_all_tools", lambda: [])
 
     with TestClient(llm_service.app) as client:
-        response = client.post("/agent/loop", json={"prompt": "test envelope", "max_steps": 1})
+        response = client.post("/api/v1/agent/loop", json={"prompt": "test envelope", "max_steps": 1})
 
     assert response.status_code == 200
     body = response.json()

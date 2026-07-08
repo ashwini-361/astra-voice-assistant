@@ -30,7 +30,7 @@ class ServiceConfig:
 
     @property
     def health_url(self) -> str:
-        return f"http://127.0.0.1:{self.port}/health"
+        return f"http://127.0.0.1:{self.port}/api/v1/health"
 
     @property
     def command(self) -> list[str]:

@@ -34,10 +34,10 @@ Consumer laptops now have enough GPU/CPU throughput for practical on-device assi
 - `duplex/` - interrupt and stream management
 
 ## TTS runtime control API
-- `GET /settings`
-- `POST /settings`
-- `POST /settings/reset`
-- `GET /streaming-config`
+- `GET /api/v1/voice/settings`
+- `POST /api/v1/voice/settings`
+- `POST /api/v1/voice/settings/reset`
+- `GET /api/v1/voice/streaming-config`
 
 Important tunables:
 - `edge_base_rate_pct`
@@ -66,10 +66,10 @@ Model cache behavior:
 ```powershell
 .\setup.ps1
 .\start_stack.ps1 -ServicesOnly
-curl http://127.0.0.1:8001/health
-curl http://127.0.0.1:8002/health
-curl http://127.0.0.1:8003/health
-curl http://127.0.0.1:8004/health
+curl http://127.0.0.1:8001/api/v1/health
+curl http://127.0.0.1:8002/api/v1/health
+curl http://127.0.0.1:8003/api/v1/health
+curl http://127.0.0.1:8004/api/v1/health
 .\start_stack.ps1
 ```
 

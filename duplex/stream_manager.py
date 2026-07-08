@@ -267,7 +267,7 @@ class ResponseStreamManager:
         )
         try:
             async with httpx.AsyncClient(timeout=2.0) as client:
-                await client.post(f"{url}/stop")
+                await client.post(f"{url}/api/v1/voice/playback/stop")
             logger.debug("[RSM] TTS stop sent")
         except Exception:  # pylint: disable=broad-except
             pass  # best-effort; TTS may not be running

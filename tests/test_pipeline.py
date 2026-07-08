@@ -33,9 +33,9 @@ async def test_pipeline_flow(monkeypatch):
     buffer = ConversationBuffer(max_turns=3)
 
     async def fake_post_json(_client, url: str, payload: Dict[str, Any], timeout: float = 15.0):  # pylint: disable=unused-argument
-        if url.endswith("/classify"):
+        if url.endswith("/api/v1/voice/intents"):
             return {"label": "chat"}
-        if url.endswith("/speak"):
+        if url.endswith("/api/v1/voice/playback"):
             return {"accepted": True, "backend_status": 200}
         raise RuntimeError("Unexpected URL")
 

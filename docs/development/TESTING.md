@@ -33,17 +33,17 @@ If missing dependencies in test env, install required package set in `requiremen
 ## 5) Runtime tuning validation
 Read settings:
 ```powershell
-curl http://127.0.0.1:8003/settings
+curl http://127.0.0.1:8003/api/v1/voice/settings
 ```
 
 Set test profile:
 ```powershell
-curl -X POST http://127.0.0.1:8003/settings -H "Content-Type: application/json" -d '{"edge_base_rate_pct":8,"chunk_initial_words":5,"chunk_steady_words":14,"chunk_max_chars":140}'
+curl -X POST http://127.0.0.1:8003/api/v1/voice/settings -H "Content-Type: application/json" -d '{"edge_base_rate_pct":8,"chunk_initial_words":5,"chunk_steady_words":14,"chunk_max_chars":140}'
 ```
 
 Check streamer view:
 ```powershell
-curl http://127.0.0.1:8003/streaming-config
+curl http://127.0.0.1:8003/api/v1/voice/streaming-config
 ```
 
 ## 6) Common failures
