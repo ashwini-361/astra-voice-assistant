@@ -1,16 +1,19 @@
-.PHONY: up up-gpu down logs seed smoke lint clean
+.PHONY: env up up-gpu down logs seed smoke lint clean
 
 # Windows: `make` isn't installed by default. Install via `choco install make`
 # or `scoop install make`, or use Git Bash with MSYS2's make package. If you
 # don't want to install make at all, the raw `docker compose` commands each
 # target runs are shown in comments below and in README.md.
 
-up: ## Start the full stack (whisper, llm, tts, intent, qdrant)
-	docker compose up -d
+env: ## One-time: create .env from .env.example if it doesn't exist yet
+	@test -f .env || cp .env.example .env
+
+up: env ## Start the full stack (whisper, llm, tts, intent, qdrant), wait for healthy
+	docker compose up -d --wait
 	docker compose ps
 
-up-gpu: ## Start with GPU passthrough for whisper (requires NVIDIA + nvidia-container-toolkit)
-	docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+up-gpu: env ## Start with GPU passthrough for whisper (requires NVIDIA + nvidia-container-toolkit)
+	docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --wait
 	docker compose ps
 
 down: ## Stop and remove all containers
@@ -19,10 +22,10 @@ down: ## Stop and remove all containers
 logs: ## Tail logs from all services
 	docker compose logs -f
 
-seed: ## Seed Qdrant with sample memory entries
+seed: env ## Seed Qdrant with sample memory entries
 	docker compose --profile tools run --rm seed
 
-smoke: ## Run the end-to-end smoke test against the running stack
+smoke: env ## Run the end-to-end smoke test against the running stack
 	docker compose --profile tools run --rm smoke-test
 
 lint: ## Run ruff + black --check + pytest (installs dev tools into venv on demand)

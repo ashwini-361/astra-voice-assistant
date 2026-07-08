@@ -50,5 +50,5 @@ infrastructure without latency coupling.
 
 ## Source
 
-`docs/ASTRA_WEB_SERVICE_PLAN.md` §0 (Core invariant), §1 (Confirmed
+`docs/roadmap/ASTRA_WEB_SERVICE_PLAN.md` §0 (Core invariant), §1 (Confirmed
 decisions), §6 (Risk register — "Loop entanglement").

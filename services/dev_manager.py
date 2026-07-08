@@ -14,6 +14,8 @@ import requests
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
+from core.config import get_settings
+
 ROOT_DIR = Path(__file__).resolve().parents[1]
 LOCAL_PYTHON = ROOT_DIR / "venv" / "python.exe"
 DEFAULT_PYTHON = LOCAL_PYTHON if LOCAL_PYTHON.exists() else Path(sys.executable)
@@ -51,11 +53,12 @@ class ServiceManager:
         self._watcher_thread: threading.Thread | None = None
         self._bootstrap_thread: threading.Thread | None = None
 
+        settings = get_settings()
         self._configs: dict[str, ServiceConfig] = {
-            "whisper": ServiceConfig("whisper", "services.whisper_service", 8001, 180),
-            "llm": ServiceConfig("llm", "services.llm_service", 8002, 180),
-            "tts": ServiceConfig("tts", "services.tts_service", 8003, 120),
-            "intent": ServiceConfig("intent", "services.intent_service", 8004, 120),
+            "whisper": ServiceConfig("whisper", "services.whisper_service", settings.whisper_port, 180),
+            "llm": ServiceConfig("llm", "services.llm_service", settings.llm_port, 180),
+            "tts": ServiceConfig("tts", "services.tts_service", settings.tts_port, 120),
+            "intent": ServiceConfig("intent", "services.intent_service", settings.intent_port, 120),
         }
         self._order = ["whisper", "llm", "tts", "intent"]
         self._processes: dict[str, subprocess.Popen[Any] | None] = {name: None for name in self._configs}

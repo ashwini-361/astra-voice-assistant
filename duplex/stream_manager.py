@@ -33,7 +33,7 @@ from typing import Any, Optional
 
 import httpx
 
-from core.config import get_settings
+from core.config import get_settings, resolve_host
 from duplex.interrupt_controller import InterruptController
 
 logger = logging.getLogger(__name__)
@@ -259,9 +259,7 @@ class ResponseStreamManager:
     async def _stop_tts_playback(self) -> None:
         """POST /stop to the TTS service to kill MCI playback instantly."""
         settings = get_settings()
-        host = settings.tts_host
-        if host in ("0.0.0.0", "::"):
-            host = "127.0.0.1"
+        host = resolve_host(settings.tts_host)
         url = (
             f"{host}:{settings.tts_port}"
             if host.startswith("http")

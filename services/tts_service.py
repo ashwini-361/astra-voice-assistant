@@ -74,15 +74,15 @@ _EDGE_EMOTION_VOICES: Dict[str, str] = {
 
 class TTSRuntimeSettings(BaseModel):
     backend: str = "edge"
-    piper_api_url: str = "http://127.0.0.1:59125"
-    piper_voice: str = "en_US-lessac-medium"
+    piper_api_url: str
+    piper_voice: str
     piper_speaker_id: Optional[int] = None
-    fish_speech_api_url: str = "http://127.0.0.1:8080"
-    edge_offline_fallback_enabled: bool = True
-    edge_offline_check_url: str = "https://www.microsoft.com"
-    edge_offline_check_timeout_sec: float = 0.5
-    edge_offline_state_ttl_sec: float = 3.0
-    edge_timeout_sec: float = 1.5
+    fish_speech_api_url: str
+    edge_offline_fallback_enabled: bool
+    edge_offline_check_url: str
+    edge_offline_check_timeout_sec: float
+    edge_offline_state_ttl_sec: float
+    edge_timeout_sec: float
     edge_default_voice: str = _EDGE_DEFAULT_VOICE
     edge_base_rate_pct: int = 8
     chunk_initial_words: int = 5

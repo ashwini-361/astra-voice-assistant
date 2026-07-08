@@ -3,7 +3,7 @@ retrieval to demonstrate. Run via: docker compose --profile tools run --rm seed
 (or `make seed`).
 
 Deliberately does NOT seed a "test user" — there is no user/auth concept in
-the codebase yet (see docs/ASTRA_WEB_SERVICE_PLAN.md Phase W3). This just
+the codebase yet (see docs/roadmap/ASTRA_WEB_SERVICE_PLAN.md Phase W3). This just
 proves the memory pipeline (embed -> Qdrant upsert -> retrieve) works
 end-to-end against the composed Qdrant container.
 """

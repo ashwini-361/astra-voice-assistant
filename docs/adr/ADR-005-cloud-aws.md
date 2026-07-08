@@ -4,7 +4,7 @@
 
 ## Context
 
-The Astra web service (`docs/ASTRA_WEB_SERVICE_PLAN.md`) needs to run
+The Astra web service (`docs/roadmap/ASTRA_WEB_SERVICE_PLAN.md`) needs to run
 hosted, multi-user infrastructure: a GPU instance for the pipeline, a
 Postgres database, Redis, and Qdrant. A cloud platform decision is needed
 before Phase W0 (AWS setup) can proceed.
@@ -32,4 +32,4 @@ No scheduled revisit; this is a fixed target platform for v1.
 
 ## Source
 
-`docs/ASTRA_WEB_SERVICE_PLAN.md` §1 (Confirmed decisions).
+`docs/roadmap/ASTRA_WEB_SERVICE_PLAN.md` §1 (Confirmed decisions).

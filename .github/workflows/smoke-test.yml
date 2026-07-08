@@ -6,7 +6,7 @@ name: Docker Compose Smoke Test
 # changes can't silently break the reproducible dev environment.
 #
 # Ollama isn't part of docker-compose.yml (it stays native/external on a
-# dev machine — see docs/ASTRA_WEB_SERVICE_PLAN.md), so CI runs it as a
+# dev machine — see docs/roadmap/ASTRA_WEB_SERVICE_PLAN.md), so CI runs it as a
 # service container and pulls a small local model instead of using cloud
 # auth, which isn't available/appropriate on a public runner.
 
@@ -17,7 +17,25 @@ on:
     branches: [dev-init, main]
 
 jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-container.txt
+
+      - name: Install CPU-only test dependencies
+        run: pip install -r requirements-container.txt
+
+      - name: Run pytest
+        run: python -m pytest tests -q
+
   smoke-test:
+    needs: pytest
     runs-on: ubuntu-latest
     services:
       ollama:

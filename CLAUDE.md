@@ -44,7 +44,7 @@ Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
 - Do **not** add a `Co-Authored-By: Claude ... <noreply@anthropic.com>` (or
   any Claude/Anthropic) trailer to commit messages in this repo.
 - When a change adds or changes architectural decisions, update
-  `docs/architecture/` (ADRs) and/or the relevant plan doc in `docs/` in
+  `docs/adr/` (ADRs) and/or the relevant plan doc in `docs/` in
   the same change — don't let project-structure docs drift from the code.
 
 ---
