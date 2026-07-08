@@ -27,3 +27,20 @@ fixed here -- these are behavior bugs, not test-infrastructure flakiness:
   happening during the test (test isolation gap -- `TestClient` startup
   triggers real MCP tool discovery/warmup rather than everything being
   mocked).
+
+## Found during Phase A code review (2026-07-08)
+
+`core/config.py::resolve_host()` only centralizes the `0.0.0.0`/`::` ->
+`127.0.0.1` normalization. The surrounding "build a full base URL from a
+host+port" logic (scheme detection via `host.startswith("http")`, then
+conditionally prefixing `http://`) is still duplicated across
+`orchestrator/pipeline.py` (4 call sites), `orchestrator/main.py` (2
+sites), `duplex/stream_manager.py`, and `streaming/tts_streamer.py` --
+8+ near-identical conditionals for one conceptual operation. A shared
+`core/config.py` helper (e.g. `build_service_url(host, port) -> str`,
+internally calling `resolve_host`) would collapse these and remove the
+risk of sites drifting out of sync (this already happened once during
+Phase A -- see the code-review fix in this branch that restored the
+scheme guard in `orchestrator/main.py`). Not done as part of Phase A
+since it's a refactor beyond fixing the regressions found; worth doing
+as a follow-up.

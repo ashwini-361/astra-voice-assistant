@@ -51,7 +51,7 @@ services:
       - "8002:8002"
     env_file: .env
     environment:
-      # Ollama stays native/external (see docs/ASTRA_WEB_SERVICE_PLAN.md) —
+      # Ollama stays native/external (see docs/roadmap/ASTRA_WEB_SERVICE_PLAN.md) —
       # not part of this compose stack. Reachable via host.docker.internal.
       AI_ASSISTANT_OLLAMA_API_URL: http://host.docker.internal:11434
       AI_ASSISTANT_QDRANT_URL: http://qdrant:6333
