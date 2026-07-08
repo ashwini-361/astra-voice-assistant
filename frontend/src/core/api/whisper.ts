@@ -1,4 +1,4 @@
-const API_BASE = 'http://127.0.0.1:8001';
+const API_BASE = import.meta.env.VITE_WHISPER_API_BASE ?? 'http://127.0.0.1:8001';
 
 /**
  * Transcribe audio via Whisper backend.
@@ -8,7 +8,7 @@ export const transcribeAudio = async (audioBlob: Blob): Promise<string> => {
   const formData = new FormData();
   formData.append('audio_file', audioBlob, 'audio.webm');
   
-  const response = await fetch(`${API_BASE}/transcribe`, {
+  const response = await fetch(`${API_BASE}/api/v1/voice/transcriptions`, {
     method: 'POST',
     body: formData,
   });

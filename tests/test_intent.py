@@ -3,7 +3,10 @@ import time
 import numpy as np
 from fastapi.testclient import TestClient
 
+from core.rate_limit import rate_limited_user_id
 from services import intent_service
+
+intent_service.app.dependency_overrides[rate_limited_user_id] = lambda: "00000000-0000-0000-0000-000000000000"
 
 
 class _FakeInput:
@@ -36,7 +39,7 @@ def test_classify(monkeypatch):
 
     with TestClient(intent_service.app) as client:
         start = time.perf_counter()
-        response = client.post("/classify", json={"text": "Turn on the lights"})
+        response = client.post("/api/v1/voice/intents", json={"text": "Turn on the lights"})
         latency = time.perf_counter() - start
 
     print(f"intent latency: {latency:.3f}s")

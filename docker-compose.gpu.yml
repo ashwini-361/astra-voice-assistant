@@ -1,0 +1,22 @@
+# GPU override — additive to docker-compose.yml, not a replacement.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.gpu.yml up
+#        (or: make up-gpu)
+#
+# Only whisper gets GPU reservation in W-1 — Ollama isn't part of this
+# compose stack (see docker-compose.yml comment), and llm/tts/intent don't
+# do GPU inference.
+#
+# NOTE (risk, verify empirically): `deploy.resources.reservations.devices`
+# is the modern Compose v2 GPU syntax (works outside Swarm mode since
+# Compose 1.28+), confirmed compatible with this machine's `nvidia` runtime
+# per `docker info`. If your Docker Compose version doesn't support this,
+# the older alternative is `runtime: nvidia` + `NVIDIA_VISIBLE_DEVICES=all`.
+services:
+  whisper:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: ["gpu"]

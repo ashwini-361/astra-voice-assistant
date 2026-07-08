@@ -42,6 +42,7 @@ class SpeechCapture:
         frame_ms: int = 30,
         silence_ms_to_stop: int = 900,
         max_record_seconds: float = 12.0,
+        device: Optional[int] = None,
     ) -> None:
         self._vad = vad_engine
         self._sample_rate = sample_rate
@@ -49,6 +50,7 @@ class SpeechCapture:
         self._frame_ms = frame_ms
         self._silence_frames_to_stop = max(1, silence_ms_to_stop // frame_ms)
         self._max_record_seconds = max_record_seconds
+        self._device = device
 
     @property
     def available(self) -> bool:
@@ -80,6 +82,7 @@ class SpeechCapture:
 
         try:
             with sd.InputStream(
+                device=self._device,
                 samplerate=self._sample_rate,
                 channels=self._channels,
                 dtype="int16",
@@ -105,6 +108,10 @@ class SpeechCapture:
                         if is_speech:
                             started = True
                             diagnostics.speech_frames += 1
+                        elif (time.perf_counter() - start_time) > wait_seconds:
+                            diagnostics.duration_sec = time.perf_counter() - start_time
+                            diagnostics.started = started
+                            return None, diagnostics
                             collected.append(frame)
                         continue
 

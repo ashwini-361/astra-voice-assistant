@@ -4,7 +4,10 @@ import wave
 
 from fastapi.testclient import TestClient
 
+from core.rate_limit import rate_limited_user_id
 from services import whisper_service
+
+whisper_service.app.dependency_overrides[rate_limited_user_id] = lambda: "00000000-0000-0000-0000-000000000000"
 
 
 class _FakeSegment:
@@ -43,7 +46,7 @@ def test_transcribe(monkeypatch):
     with TestClient(whisper_service.app) as client:
         start = time.perf_counter()
         response = client.post(
-            "/transcribe",
+            "/api/v1/voice/transcriptions",
             files={"audio_file": ("test.wav", _silent_wav_bytes(), "audio/wav")},
         )
         latency = time.perf_counter() - start

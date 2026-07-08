@@ -11,11 +11,12 @@ import asyncio
 import io
 import logging
 import threading
+import time
 from typing import Any, Dict, Optional
 
 import numpy as np
 import requests
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -25,6 +26,7 @@ except ImportError:
     miniaudio = None  # type: ignore[assignment]
 
 from core.config import get_settings
+from core.rate_limit import rate_limited_user_id
 from humanization.emotion_tagger import strip_emotion_tags
 from services.audio_playback_engine import AudioPlaybackEngine
 
@@ -73,8 +75,15 @@ _EDGE_EMOTION_VOICES: Dict[str, str] = {
 
 class TTSRuntimeSettings(BaseModel):
     backend: str = "edge"
-    piper_api_url: str = "http://127.0.0.1:59125"
-    fish_speech_api_url: str = "http://127.0.0.1:8080"
+    piper_api_url: str
+    piper_voice: str
+    piper_speaker_id: Optional[int] = None
+    fish_speech_api_url: str
+    edge_offline_fallback_enabled: bool
+    edge_offline_check_url: str
+    edge_offline_check_timeout_sec: float
+    edge_offline_state_ttl_sec: float
+    edge_timeout_sec: float
     edge_default_voice: str = _EDGE_DEFAULT_VOICE
     edge_base_rate_pct: int = 8
     chunk_initial_words: int = 5
@@ -85,7 +94,14 @@ class TTSRuntimeSettings(BaseModel):
 class TTSSettingsUpdate(BaseModel):
     backend: Optional[str] = None
     piper_api_url: Optional[str] = None
+    piper_voice: Optional[str] = None
+    piper_speaker_id: Optional[int] = None
     fish_speech_api_url: Optional[str] = None
+    edge_offline_fallback_enabled: Optional[bool] = None
+    edge_offline_check_url: Optional[str] = None
+    edge_offline_check_timeout_sec: Optional[float] = None
+    edge_offline_state_ttl_sec: Optional[float] = None
+    edge_timeout_sec: Optional[float] = None
     edge_default_voice: Optional[str] = None
     edge_base_rate_pct: Optional[int] = None
     chunk_initial_words: Optional[int] = None
@@ -114,7 +130,14 @@ def _default_runtime_settings() -> TTSRuntimeSettings:
     return TTSRuntimeSettings(
         backend=settings.tts_backend.lower(),
         piper_api_url=str(settings.piper_api_url).rstrip("/"),
+        piper_voice=settings.piper_voice,
+        piper_speaker_id=settings.piper_speaker_id,
         fish_speech_api_url=str(settings.fish_speech_api_url).rstrip("/"),
+        edge_offline_fallback_enabled=settings.tts_edge_offline_fallback_enabled,
+        edge_offline_check_url=settings.tts_edge_offline_check_url,
+        edge_offline_check_timeout_sec=settings.tts_edge_offline_check_timeout_sec,
+        edge_offline_state_ttl_sec=settings.tts_edge_offline_state_ttl_sec,
+        edge_timeout_sec=settings.tts_edge_timeout_sec,
         edge_default_voice=_EDGE_DEFAULT_VOICE,
         edge_base_rate_pct=8,
         chunk_initial_words=5,
@@ -129,6 +152,44 @@ _runtime_settings = _default_runtime_settings()
 def _load_runtime_settings() -> TTSRuntimeSettings:
     with _runtime_lock:
         return _runtime_settings.model_copy(deep=True)
+
+
+class _NetworkState:
+    def __init__(self):
+        self._online = True
+        self._last_check = 0.0
+        self._lock = asyncio.Lock()
+
+    async def get_status(self, runtime: TTSRuntimeSettings) -> bool:
+        ttl = max(0.1, float(runtime.edge_offline_state_ttl_sec))
+        now = time.monotonic()
+        if now - self._last_check <= ttl:
+            return self._online
+
+        async with self._lock:
+            now = time.monotonic()
+            if now - self._last_check <= ttl:
+                return self._online
+            self._online = await self._probe(runtime)
+            self._last_check = now
+            return self._online
+
+    async def _probe(self, runtime: TTSRuntimeSettings) -> bool:
+        def _head() -> bool:
+            try:
+                response = _http_session.head(
+                    runtime.edge_offline_check_url,
+                    timeout=max(0.1, float(runtime.edge_offline_check_timeout_sec)),
+                    allow_redirects=True,
+                )
+                return response.status_code < 500
+            except Exception:
+                return False
+
+        return await asyncio.to_thread(_head)
+
+
+_network_state = _NetworkState()
 
 
 def _decode_mp3(mp3_bytes: bytes) -> Optional[np.ndarray]:
@@ -219,36 +280,82 @@ async def _speak_edge(payload: Dict[str, Any]) -> Dict[str, Any]:
         raise HTTPException(status_code=502, detail=f"Edge TTS failed: {exc}") from exc
 
 
-def _speak_piper(payload: Dict[str, Any]) -> requests.Response:
-    """Send plain stripped text to Piper TTS server."""
+async def _speak_piper(payload: Dict[str, Any]) -> requests.Response:
+    """Send plain stripped text to Piper TTS server in a background thread.
+
+    Keeps using the synchronous `requests` session (so tests can monkeypatch
+    `tts_service._http_session.post`) but offloads the network call to a
+    thread to avoid blocking the asyncio event loop.
+    """
     runtime = _load_runtime_settings()
     clean_text = strip_emotion_tags(payload["text"])
-    try:
-        response = _http_session.post(
+    piper_payload: Dict[str, Any] = {"text": clean_text, "voice": runtime.piper_voice}
+    if runtime.piper_speaker_id is not None:
+        piper_payload["speaker_id"] = runtime.piper_speaker_id
+
+    def _do_post() -> requests.Response:
+        resp = _http_session.post(
             f"{runtime.piper_api_url}/synthesize",
-            json={"text": clean_text},
+            json=piper_payload,
             timeout=15,
         )
-        response.raise_for_status()
+        if resp.status_code in {400, 404, 422}:
+            logger.info("[tts] Piper rejected voice payload; retrying legacy text-only request")
+            resp = _http_session.post(
+                f"{runtime.piper_api_url}/synthesize",
+                json={"text": clean_text},
+                timeout=15,
+            )
+        resp.raise_for_status()
+        return resp
+
+    try:
+        response = await asyncio.to_thread(_do_post)
         return response
     except Exception as exc:  # pylint: disable=broad-except
         logger.error("Piper request failed: %s", exc)
         raise HTTPException(status_code=502, detail="Piper TTS backend unavailable") from exc
 
 
-def _speak_fish_speech(payload: Dict[str, Any]) -> requests.Response:
-    """Send emotion-tagged text to OpenAudio S1 Mini / Fish-Speech server."""
+async def _route_edge_with_fallback(payload: Dict[str, Any]) -> Dict[str, Any]:
+    runtime = _load_runtime_settings()
+    if not runtime.edge_offline_fallback_enabled:
+        result = await _speak_edge(payload)
+        return {"result": result, "backend": "edge"}
+
+    is_online = await _network_state.get_status(runtime)
+    if not is_online:
+        logger.info("[tts] offline detected -> piper fallback")
+        piper_response = await _speak_piper(payload)
+        return {"result": {"status_code": piper_response.status_code}, "backend": "piper"}
+
+    try:
+        result = await asyncio.wait_for(_speak_edge(payload), timeout=max(0.2, float(runtime.edge_timeout_sec)))
+        return {"result": result, "backend": "edge"}
+    except Exception as exc:  # pylint: disable=broad-except
+        logger.warning("[tts] edge failed (%s) -> piper fallback", exc)
+        piper_response = await _speak_piper(payload)
+        return {"result": {"status_code": piper_response.status_code}, "backend": "piper"}
+
+
+async def _speak_fish_speech(payload: Dict[str, Any]) -> requests.Response:
+    """Send emotion-tagged text to OpenAudio S1 Mini / Fish-Speech server in a background thread."""
     runtime = _load_runtime_settings()
     emotion = payload.get("emotion")
     raw_text = payload["text"]
     text_for_model = f"({emotion}){raw_text}" if emotion else raw_text
-    try:
-        response = _http_session.post(
+
+    def _do_post() -> requests.Response:
+        resp = _http_session.post(
             f"{runtime.fish_speech_api_url}/v1/tts",
             json={"text": text_for_model, "streaming": False},
             timeout=60,
         )
-        response.raise_for_status()
+        resp.raise_for_status()
+        return resp
+
+    try:
+        response = await asyncio.to_thread(_do_post)
         return response
     except Exception as exc:  # pylint: disable=broad-except
         logger.error("Fish-Speech request failed: %s", exc)
@@ -260,8 +367,8 @@ class SynthesizeRequest(BaseModel):
     emotion: Optional[str] = None
 
 
-@app.post("/synthesize")
-async def synthesize(request: SynthesizeRequest):
+@app.post("/api/v1/voice/speech")
+async def synthesize(request: SynthesizeRequest, user_id: str = Depends(rate_limited_user_id)):
     """Return raw MP3 audio bytes for browser-side playback."""
     import edge_tts  # lazy import
     from fastapi.responses import Response as FastAPIResponse
@@ -271,6 +378,19 @@ async def synthesize(request: SynthesizeRequest):
         return FastAPIResponse(content=b"", media_type="audio/mpeg")
 
     runtime = _load_runtime_settings()
+    payload = {"text": request.text, "emotion": request.emotion}
+    if runtime.backend.lower() == "piper":
+        response = await _speak_piper(payload)
+        media_type = response.headers.get("content-type", "audio/wav")
+        return FastAPIResponse(content=response.content, media_type=media_type)
+    if runtime.backend.lower() == "edge" and runtime.edge_offline_fallback_enabled:
+        is_online = await _network_state.get_status(runtime)
+        if not is_online:
+            logger.info("[tts] /synthesize offline detected -> piper fallback")
+            response = await _speak_piper(payload)
+            media_type = response.headers.get("content-type", "audio/wav")
+            return FastAPIResponse(content=response.content, media_type=media_type)
+
     emotion = request.emotion
     default_voice = runtime.edge_default_voice or _EDGE_DEFAULT_VOICE
     voice = _EDGE_EMOTION_VOICES.get(emotion, default_voice) if emotion else default_voice
@@ -307,12 +427,17 @@ async def synthesize(request: SynthesizeRequest):
         )
         return FastAPIResponse(content=mp3_bytes, media_type="audio/mpeg")
     except Exception as exc:  # pylint: disable=broad-except
+        if runtime.edge_offline_fallback_enabled:
+            logger.warning("[tts] /synthesize edge failed (%s) -> piper fallback", exc)
+            response = await _speak_piper(payload)
+            media_type = response.headers.get("content-type", "audio/wav")
+            return FastAPIResponse(content=response.content, media_type=media_type)
         logger.error("Edge TTS synthesize failed: %s", exc)
         raise HTTPException(status_code=502, detail=f"Edge TTS failed: {exc}") from exc
 
 
-@app.post("/speak", response_model=SpeakResponse)
-async def speak(request: SpeakRequest) -> SpeakResponse:
+@app.post("/api/v1/voice/playback", response_model=SpeakResponse)
+async def speak(request: SpeakRequest, user_id: str = Depends(rate_limited_user_id)) -> SpeakResponse:
     """Synthesise and enqueue one TTS segment for ordered playback."""
     global _chunk_counter
 
@@ -353,21 +478,21 @@ async def speak(request: SpeakRequest) -> SpeakResponse:
 
     if backend == "edge":
         logger.info("[tts] edge backend | emotion=%s | chunk=%d | %.60s", request.emotion, chunk_id, request.text)
-        result = await _speak_edge(payload)
-        return SpeakResponse(accepted=True, backend_status=result["status_code"], backend=backend)
+        route = await _route_edge_with_fallback(payload)
+        return SpeakResponse(accepted=True, backend_status=route["result"]["status_code"], backend=route["backend"])
 
     if backend == "fish_speech":
         logger.info("[tts] fish_speech backend | emotion=%s | %.60s", request.emotion, request.text)
-        response = _speak_fish_speech(payload)
+        response = await _speak_fish_speech(payload)
     else:
         logger.info("[tts] piper backend | emotion=%s | %.60s", request.emotion, request.text)
-        response = _speak_piper(payload)
+        response = await _speak_piper(payload)
 
     return SpeakResponse(accepted=True, backend_status=response.status_code, backend=backend)
 
 
-@app.post("/stop")
-async def stop_playback():
+@app.post("/api/v1/voice/playback/stop")
+async def stop_playback(user_id: str = Depends(rate_limited_user_id)):
     """Immediately stop all active TTS audio playback."""
     global _current_generation, _chunk_counter
 
@@ -391,19 +516,19 @@ async def stop_playback():
     return {"stopped": True, "count": stopped, "generation": gen}
 
 
-@app.get("/health")
+@app.get("/api/v1/health")
 async def health():
     runtime = _load_runtime_settings()
     return {"status": "ok", "service": "tts", "backend": runtime.backend}
 
 
-@app.get("/settings")
-async def get_runtime_settings():
+@app.get("/api/v1/voice/settings")
+async def get_runtime_settings(user_id: str = Depends(rate_limited_user_id)):
     return _load_runtime_settings().model_dump()
 
 
-@app.post("/settings")
-async def update_runtime_settings(update: TTSSettingsUpdate):
+@app.post("/api/v1/voice/settings")
+async def update_runtime_settings(update: TTSSettingsUpdate, user_id: str = Depends(rate_limited_user_id)):
     with _runtime_lock:
         current = _runtime_settings.model_dump()
         for key, value in update.model_dump(exclude_none=True).items():
@@ -419,21 +544,32 @@ async def update_runtime_settings(update: TTSSettingsUpdate):
             raise HTTPException(status_code=400, detail="chunk_steady_words must be >= chunk_initial_words")
         if int(current["chunk_max_chars"]) < 40:
             raise HTTPException(status_code=400, detail="chunk_max_chars must be >= 40")
+        current["piper_voice"] = str(current["piper_voice"]).strip()
+        if not current["piper_voice"]:
+            raise HTTPException(status_code=400, detail="piper_voice must not be empty")
+        if current["piper_speaker_id"] is not None and int(current["piper_speaker_id"]) < 0:
+            raise HTTPException(status_code=400, detail="piper_speaker_id must be >= 0")
+        if float(current["edge_offline_check_timeout_sec"]) <= 0:
+            raise HTTPException(status_code=400, detail="edge_offline_check_timeout_sec must be > 0")
+        if float(current["edge_offline_state_ttl_sec"]) <= 0:
+            raise HTTPException(status_code=400, detail="edge_offline_state_ttl_sec must be > 0")
+        if float(current["edge_timeout_sec"]) <= 0:
+            raise HTTPException(status_code=400, detail="edge_timeout_sec must be > 0")
 
         globals()["_runtime_settings"] = TTSRuntimeSettings(**current)
 
     return {"status": "updated", "settings": _load_runtime_settings().model_dump()}
 
 
-@app.post("/settings/reset")
-async def reset_runtime_settings():
+@app.post("/api/v1/voice/settings/reset")
+async def reset_runtime_settings(user_id: str = Depends(rate_limited_user_id)):
     with _runtime_lock:
         globals()["_runtime_settings"] = _default_runtime_settings()
     return {"status": "reset", "settings": _load_runtime_settings().model_dump()}
 
 
-@app.get("/streaming-config")
-async def get_streaming_config():
+@app.get("/api/v1/voice/streaming-config")
+async def get_streaming_config(user_id: str = Depends(rate_limited_user_id)):
     runtime = _load_runtime_settings()
     return {
         "chunk_initial_words": runtime.chunk_initial_words,
@@ -443,7 +579,7 @@ async def get_streaming_config():
 
 
 @app.get("/debug/playback")
-async def debug_playback():
+async def debug_playback(user_id: str = Depends(rate_limited_user_id)):
     """Expose playback-engine diagnostics for audio troubleshooting."""
     return {
         "generation": _current_generation,

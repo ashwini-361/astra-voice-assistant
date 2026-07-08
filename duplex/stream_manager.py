@@ -33,7 +33,8 @@ from typing import Any, Optional
 
 import httpx
 
-from core.config import get_settings
+from core.auth import local_service_auth_headers
+from core.config import get_settings, resolve_host
 from duplex.interrupt_controller import InterruptController
 
 logger = logging.getLogger(__name__)
@@ -259,9 +260,7 @@ class ResponseStreamManager:
     async def _stop_tts_playback(self) -> None:
         """POST /stop to the TTS service to kill MCI playback instantly."""
         settings = get_settings()
-        host = settings.tts_host
-        if host in ("0.0.0.0", "::"):
-            host = "127.0.0.1"
+        host = resolve_host(settings.tts_host)
         url = (
             f"{host}:{settings.tts_port}"
             if host.startswith("http")
@@ -269,7 +268,7 @@ class ResponseStreamManager:
         )
         try:
             async with httpx.AsyncClient(timeout=2.0) as client:
-                await client.post(f"{url}/stop")
+                await client.post(f"{url}/api/v1/voice/playback/stop", headers=local_service_auth_headers())
             logger.debug("[RSM] TTS stop sent")
         except Exception:  # pylint: disable=broad-except
             pass  # best-effort; TTS may not be running

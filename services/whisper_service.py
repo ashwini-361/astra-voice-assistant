@@ -6,13 +6,14 @@ import os
 import tempfile
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
 from core.config import get_settings
+from core.rate_limit import rate_limited_user_id
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -149,8 +150,8 @@ async def _transcribe_file(temp_path: str):
     }
 
 
-@app.post("/transcribe", response_model=TranscriptionResponse)
-async def transcribe(audio_file: UploadFile = File(...)) -> JSONResponse:
+@app.post("/api/v1/voice/transcriptions", response_model=TranscriptionResponse)
+async def transcribe(audio_file: UploadFile = File(...), user_id: str = Depends(rate_limited_user_id)) -> JSONResponse:
     if audio_file.content_type and not audio_file.content_type.startswith("audio"):
         raise HTTPException(status_code=400, detail="Invalid file type")
 
@@ -172,7 +173,7 @@ async def transcribe(audio_file: UploadFile = File(...)) -> JSONResponse:
             logger.warning("Temporary audio file cleanup failed", exc_info=True)
 
 
-@app.get("/health")
+@app.get("/api/v1/health")
 async def health():
     """Health check endpoint"""
     return {"status": "ok", "service": "whisper"}

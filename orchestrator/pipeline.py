@@ -3,12 +3,14 @@ import asyncio
 import json
 import logging
 import time
-from typing import Any, Dict, Optional, Tuple
+import uuid
+from typing import Any, AsyncIterator, Dict, Optional, Tuple
 
 import httpx
 from pydantic import BaseModel
 
-from core.config import get_settings
+from core.auth import LOCAL_USER_ID, local_service_auth_headers
+from core.config import get_settings, resolve_host
 from duplex.audio_listener import AudioListener
 from duplex.interrupt_controller import InterruptController
 from duplex.state_machine import AssistantState, AssistantStateController
@@ -29,6 +31,38 @@ from streaming.llm_streamer import stream_llm
 from streaming.tts_streamer import stream_tts_from_tokens
 
 logger = logging.getLogger(__name__)
+
+# ── Tool-query keywords (drives Mode A vs Mode B routing) ────────────────────
+_TOOL_KEYWORDS = frozenset({
+    "time", "clock", "timezone", "zone", "date", "today", "now",
+    "search", "find", "news", "latest", "headline", "tell me about",
+    "what is", "who is", "weather",
+    "read", "fetch", "open", "webpage", "website",
+    "save", "note", "append", "store", "write",
+    "file", "folder", "directory",
+    "play", "pause", "stop", "volume", "music",
+})
+
+
+def _needs_tools(text: str) -> bool:
+    """Return True when the query should route to the agent (Mode A)."""
+    q = text.lower()
+    return any(kw in q for kw in _TOOL_KEYWORDS)
+
+
+async def _text_to_token_stream(text: str) -> AsyncIterator[str]:
+    """Yield a synthesized text string as a token stream for TTS."""
+    # Chunk at word boundaries so TTS adaptive chunker works naturally
+    words = text.split()
+    chunk: list[str] = []
+    for word in words:
+        chunk.append(word)
+        if len(chunk) >= 6:
+            yield " ".join(chunk) + " "
+            chunk = []
+            await asyncio.sleep(0)
+    if chunk:
+        yield " ".join(chunk)
 
 
 def _set_state(state_controller: Optional[AssistantStateController], state: AssistantState, visual_feedback: bool) -> None:
@@ -65,44 +99,60 @@ class PipelineResult(BaseModel):
 
 
 async def _post_json(client: httpx.AsyncClient, url: str, payload: Dict[str, Any], timeout: float = 15.0) -> Dict[str, Any]:
-    response = await client.post(url, json=payload, timeout=timeout)
+    response = await client.post(url, json=payload, timeout=timeout, headers=local_service_auth_headers())
     response.raise_for_status()
     return response.json()
 
 
-async def _call_intent(client: httpx.AsyncClient, text: str) -> Tuple[str, float]:
+async def _call_intent(client: httpx.AsyncClient, text: str, request_id: str = "") -> Tuple[str, float]:
     start = time.perf_counter()
     settings = get_settings()
-    host = settings.intent_host
-    if host in ("0.0.0.0", "::"):
-        host = "127.0.0.1"
+    host = resolve_host(settings.intent_host)
     url = f"{host}:{settings.intent_port}" if host.startswith("http") else f"http://{host}:{settings.intent_port}"
     try:
-        data = await _post_json(client, f"{url}/classify", {"text": text})
+        data = await _post_json(client, f"{url}/api/v1/voice/intents", {"text": text})
         intent = data.get("label", "unknown")
     except Exception as exc:  # pylint: disable=broad-except
         logger.warning("Intent service unavailable, defaulting to chat: %s", exc)
         intent = "chat"
     elapsed_ms = (time.perf_counter() - start) * 1000
-    logger.info(json.dumps({"stage": "intent", "intent": intent, "intent_ms": round(elapsed_ms, 2)}))
+    logger.info(json.dumps({"stage": "intent", "request_id": request_id, "intent": intent, "intent_ms": round(elapsed_ms, 2)}))
     return intent, elapsed_ms
+
+
+async def _call_agent(text: str, request_id: str = "") -> Tuple[str, float]:
+    """Mode A: call agent loop (non-stream) and return synthesized text."""
+    start = time.perf_counter()
+    settings = get_settings()
+    host = resolve_host(settings.llm_host)
+    url = f"http://{host}:{settings.llm_port}"
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            data = await _post_json(client, f"{url}/api/v1/agent/loop", {"prompt": text, "max_steps": 4}, timeout=60.0)
+        response_text = str(data.get("response", "")).strip()
+        if not response_text:
+            response_text = "I was unable to find an answer using the available tools."
+    except Exception as exc:  # pylint: disable=broad-except
+        logger.warning("[pipeline] agent call failed, falling back to LLM stream: %s", exc)
+        response_text = ""
+    elapsed_ms = (time.perf_counter() - start) * 1000
+    logger.info(json.dumps({"stage": "agent", "request_id": request_id, "agent_ms": round(elapsed_ms, 2)}))
+    return response_text, elapsed_ms
 
 
 async def _call_llm(client: httpx.AsyncClient, prompt: str) -> Tuple[str, float]:
     start = time.perf_counter()
     settings = get_settings()
-    host = settings.llm_host
-    if host in ("0.0.0.0", "::"):
-        host = "127.0.0.1"
+    host = resolve_host(settings.llm_host)
     url = f"{host}:{settings.llm_port}" if host.startswith("http") else f"http://{host}:{settings.llm_port}"
-    data = await _post_json(client, f"{url}/generate", {"prompt": prompt})
+    data = await _post_json(client, f"{url}/api/v1/chat/completions", {"prompt": prompt})
     response_text = data.get("response", "")
     elapsed_ms = (time.perf_counter() - start) * 1000
     logger.info(json.dumps({"stage": "llm", "llm_ms": round(elapsed_ms, 2)}))
     return response_text, elapsed_ms
 
 
-async def _collect_llm_stream(prompt: str) -> Tuple[str, float]:
+async def _collect_llm_stream(prompt: str, request_id: str = "") -> Tuple[str, float]:
     """Consume streamed LLM tokens and return full text + elapsed latency."""
     start = time.perf_counter()
     parts: list[str] = []
@@ -110,20 +160,18 @@ async def _collect_llm_stream(prompt: str) -> Tuple[str, float]:
         parts.append(token)
     text = "".join(parts)
     elapsed_ms = (time.perf_counter() - start) * 1000
-    logger.info(json.dumps({"stage": "llm_stream_collected", "llm_ms": round(elapsed_ms, 2)}))
+    logger.info(json.dumps({"stage": "llm_stream_collected", "request_id": request_id, "llm_ms": round(elapsed_ms, 2)}))
     return text, elapsed_ms
 
 
-async def _call_tts(client: httpx.AsyncClient, text: str) -> Tuple[Optional[int], float]:
+async def _call_tts(client: httpx.AsyncClient, text: str, request_id: str = "") -> Tuple[Optional[int], float]:
     start = time.perf_counter()
     settings = get_settings()
-    host = settings.tts_host
-    if host in ("0.0.0.0", "::"):
-        host = "127.0.0.1"
+    host = resolve_host(settings.tts_host)
     url = f"{host}:{settings.tts_port}" if host.startswith("http") else f"http://{host}:{settings.tts_port}"
-    data = await _post_json(client, f"{url}/speak", {"text": text})
+    data = await _post_json(client, f"{url}/api/v1/voice/playback", {"text": text})
     elapsed_ms = (time.perf_counter() - start) * 1000
-    logger.info(json.dumps({"stage": "tts", "tts_ms": round(elapsed_ms, 2)}))
+    logger.info(json.dumps({"stage": "tts", "request_id": request_id, "tts_ms": round(elapsed_ms, 2)}))
     return data.get("backend_status"), elapsed_ms
 
 
@@ -139,13 +187,14 @@ async def run_pipeline(
     tts_status: Optional[int] = None
     memories_used: Optional[str] = None
     emotional_context: Optional[str] = None
+    request_id = str(uuid.uuid4())
 
     memory_manager = memory_manager or MemoryManager()
     emotion_engine = emotion_engine or EmotionEngine()
 
     try:
         async with httpx.AsyncClient() as client:
-            intent, intent_ms = await _call_intent(client, text)
+            intent, intent_ms = await _call_intent(client, text, request_id=request_id)
             timings["intent_ms"] = intent_ms
 
             if intent != "chat":
@@ -154,9 +203,9 @@ async def run_pipeline(
                 buffer.add("assistant", assistant_text)
                 return PipelineResult(intent=intent, assistant_text=assistant_text, tts_status=None, timings_ms=timings)
 
-            # Memory retrieval
+            # Memory retrieval (off the event loop -- Postgres+Qdrant I/O, see agent_memory.py's identical pattern)
             mem_start = time.perf_counter()
-            memories = memory_manager.retrieve(text)
+            memories = await asyncio.to_thread(memory_manager.retrieve, text, user_id=LOCAL_USER_ID)
             memories_used = memory_manager.format_memories(memories)
             timings["memory_ms"] = (time.perf_counter() - mem_start) * 1000
 
@@ -166,7 +215,7 @@ async def run_pipeline(
 
             prompt = build_prompt(buffer, text, emotional_state=emotional_context, retrieved_memories=memories_used)
 
-            assistant_text, llm_ms = await _collect_llm_stream(prompt)
+            assistant_text, llm_ms = await _collect_llm_stream(prompt, request_id=request_id)
             timings["llm_ms"] = llm_ms
 
             # ── Emotion parsing ───────────────────────────────────────
@@ -175,12 +224,12 @@ async def run_pipeline(
             clean_text = strip_emotion_tags(assistant_text)
 
             prosody_text, _ = apply_prosody(clean_text)
-            tts_status, tts_ms = await _call_tts(client, prosody_text)
+            tts_status, tts_ms = await _call_tts(client, prosody_text, request_id=request_id)
             timings["tts_ms"] = tts_ms
 
-            # Store memory after response (use clean text)
+            # Store memory after response (use clean text), off the event loop
             embed_start = time.perf_counter()
-            memory_manager.add_interaction(text, clean_text)
+            await asyncio.to_thread(memory_manager.add_interaction, text, clean_text, user_id=LOCAL_USER_ID)
             timings["embedding_ms"] = (time.perf_counter() - embed_start) * 1000
             assistant_text = clean_text
     except Exception as exc:  # pylint: disable=broad-except
@@ -192,6 +241,8 @@ async def run_pipeline(
     buffer.add("assistant", assistant_text)
 
     log_metrics({
+        "request_id": request_id,
+        "user_id": LOCAL_USER_ID,
         "whisper_ms": timings.get("whisper_ms"),
         "intent_ms": timings.get("intent_ms"),
         "llm_ms": timings.get("llm_ms"),
@@ -224,60 +275,36 @@ async def run_pipeline_streaming(
     generation_id: int = 0,
     is_generation_current_fn=None,
 ) -> PipelineResult:
-    """Run full pipeline: intent → memory → LLM stream → TTS stream.
+    """Run full pipeline with automatic Mode A / Mode B routing.
+
+    Mode A (agent, non-stream): query contains tool keywords → agent loop
+        → synthesized text → streamed to TTS via _text_to_token_stream
+    Mode B (direct stream): conversational query → stream_llm → TTS stream
 
     Parameters
     ----------
     cancellation_event : asyncio.Event, optional
-        When set, the pipeline aborts quickly.  Used by the RSM to
-        cancel the active stream when a new user utterance arrives.
+        When set, the pipeline aborts quickly.
     generation_id : int
-        Monotonically increasing turn id from the RSM.  Used for
-        logging and stream-ownership validation.
+        Monotonically increasing turn id from the RSM.
     is_generation_current_fn : callable, optional
-        Returns True if this pipeline's generation_id is still the
-        current one.  When it returns False the pipeline aborts so
-        that stale tokens never reach TTS.
+        Returns True if this generation_id is still current.
     """
-    settings = get_settings()
     timings: Dict[str, float] = {"whisper_ms": 0.0, "intent_ms": 0.0, "llm_ms": 0.0, "tts_ms": 0.0, "embedding_ms": 0.0, "memory_ms": 0.0}
     tts_status: Optional[int] = None
     memories_used: Optional[str] = None
     emotional_context: Optional[str] = None
     assistant_text = ""
     interrupted = False
+    intent = "chat"
+    request_id = str(uuid.uuid4())
 
     memory_manager = memory_manager or MemoryManager()
     emotion_engine = emotion_engine or EmotionEngine()
 
     _set_state(state_controller, AssistantState.LISTENING, visual_feedback)
 
-    # ── Intent ───────────────────────────────────────────────────────
-    async with httpx.AsyncClient() as client:
-        intent, intent_ms = await _call_intent(client, text)
-        timings["intent_ms"] = intent_ms
-
-    # ── Memory retrieval ─────────────────────────────────────────────
-    mem_start = time.perf_counter()
-    memories = memory_manager.retrieve(text)
-    memories_used = memory_manager.format_memories(memories)
-    timings["memory_ms"] = (time.perf_counter() - mem_start) * 1000
-
-    # ── Emotion ──────────────────────────────────────────────────────
-    state_obj = emotion_engine.update(text)
-    emotional_context = _resolve_emotional_context(emotion_engine, state_obj)
-
-    # ── Build prompt ─────────────────────────────────────────────────
-    prompt = build_prompt(buffer, text, emotional_state=emotional_context, retrieved_memories=memories_used)
-
-    # ── LLM + TTS streaming ──────────────────────────────────────────
-    _set_state(state_controller, AssistantState.THINKING, visual_feedback)
-
-    llm_start = time.perf_counter()
-    llm_done_ms: Optional[float] = None
-
     def _is_cancelled() -> bool:
-        """Check all cancellation sources including generation staleness."""
         if cancellation_event and cancellation_event.is_set():
             return True
         if interrupt_controller and interrupt_controller.is_triggered():
@@ -286,50 +313,120 @@ async def run_pipeline_streaming(
             return True
         return False
 
-    async def token_iter():
-        nonlocal assistant_text, llm_done_ms
+    # ── Intent ───────────────────────────────────────────────────────
+    async with httpx.AsyncClient() as client:
+        intent, intent_ms = await _call_intent(client, text, request_id=request_id)
+        timings["intent_ms"] = intent_ms
+
+    # ── Memory retrieval (off the event loop -- Postgres+Qdrant I/O) ──
+    mem_start = time.perf_counter()
+    memories = await asyncio.to_thread(memory_manager.retrieve, text, user_id=LOCAL_USER_ID)
+    memories_used = memory_manager.format_memories(memories)
+    timings["memory_ms"] = (time.perf_counter() - mem_start) * 1000
+
+    # ── Emotion ──────────────────────────────────────────────────────
+    state_obj = emotion_engine.update(text)
+    emotional_context = _resolve_emotional_context(emotion_engine, state_obj)
+
+    if _is_cancelled():
+        logger.info("[pipeline] gen=%d cancelled before LLM", generation_id)
+        _set_state(state_controller, AssistantState.IDLE, visual_feedback)
+        return PipelineResult(intent=intent, assistant_text="", tts_status=None, timings_ms=timings)
+
+    _set_state(state_controller, AssistantState.THINKING, visual_feedback)
+    llm_start = time.perf_counter()
+
+    # ── Route: Mode A (agent) vs Mode B (stream) ─────────────────────
+    use_agent = _needs_tools(text)
+    logger.info(json.dumps({"stage": "route", "request_id": request_id, "generation_id": generation_id, "mode": "agent" if use_agent else "stream", "query": text[:80]}))
+
+    if use_agent:
+        # ── Mode A: agent loop (non-stream) → synthesized text → TTS ─
+        agent_text, agent_ms = await _call_agent(text, request_id=request_id)
+        timings["llm_ms"] = agent_ms
+
+        if not agent_text:
+            # Agent failed — fall through to Mode B with full prompt
+            use_agent = False
+            logger.info("[pipeline] gen=%d agent returned empty, falling back to stream", generation_id)
+
+        if agent_text and not _is_cancelled():
+            assistant_text = agent_text
+            clean_text = strip_emotion_tags(assistant_text)
+
+            _set_state(state_controller, AssistantState.SPEAKING, visual_feedback)
+            tts_start = time.perf_counter()
+
+            # Stream synthesized agent text to TTS (same path as Mode B)
+            try:
+                tts_result = await stream_tts_from_tokens(
+                    _text_to_token_stream(clean_text),
+                    interrupt_controller=interrupt_controller,
+                    cancellation_event=cancellation_event,
+                    generation_id=generation_id,
+                    is_generation_current_fn=is_generation_current_fn,
+                )
+                tts_status = 200 if tts_result == "completed" else None
+                if tts_result == "interrupted":
+                    interrupted = True
+                    _set_state(state_controller, AssistantState.INTERRUPTED, visual_feedback)
+            except asyncio.CancelledError:
+                interrupted = True
+                _set_state(state_controller, AssistantState.INTERRUPTED, visual_feedback)
+            except Exception as exc:  # pylint: disable=broad-except
+                logger.error("[pipeline] agent TTS stream error: %s", exc)
+
+            timings["tts_ms"] = (time.perf_counter() - tts_start) * 1000
+
+    if not use_agent:
+        # ── Mode B: direct LLM stream → TTS stream ───────────────────
+        prompt = build_prompt(buffer, text, emotional_state=emotional_context, retrieved_memories=memories_used)
+        llm_done_ms: Optional[float] = None
+
+        async def token_iter():
+            nonlocal assistant_text, llm_done_ms
+            try:
+                async for token in stream_llm(prompt, cancellation_event=cancellation_event, generation_id=generation_id):
+                    if _is_cancelled():
+                        logger.debug("[pipeline] gen=%d token_iter cancelled", generation_id)
+                        break
+                    assistant_text += token
+                    yield token
+            finally:
+                if llm_done_ms is None:
+                    llm_done_ms = (time.perf_counter() - llm_start) * 1000
+
+        _set_state(state_controller, AssistantState.SPEAKING, visual_feedback)
+        tts_start = time.perf_counter()
+
         try:
-            async for token in stream_llm(prompt, cancellation_event=cancellation_event, generation_id=generation_id):
-                if _is_cancelled():
-                    logger.debug("[pipeline] gen=%d token_iter cancelled", generation_id)
-                    break
-                assistant_text += token
-                yield token
-        finally:
-            if llm_done_ms is None:
-                llm_done_ms = (time.perf_counter() - llm_start) * 1000
-
-    _set_state(state_controller, AssistantState.SPEAKING, visual_feedback)
-
-    tts_start = time.perf_counter()
-    try:
-        tts_result = await stream_tts_from_tokens(
-            token_iter(),
-            interrupt_controller=interrupt_controller,
-            cancellation_event=cancellation_event,
-            generation_id=generation_id,
-            is_generation_current_fn=is_generation_current_fn,
-        )
-        tts_status = 200 if tts_result == "completed" else None
-        if tts_result == "interrupted":
+            tts_result = await stream_tts_from_tokens(
+                token_iter(),
+                interrupt_controller=interrupt_controller,
+                cancellation_event=cancellation_event,
+                generation_id=generation_id,
+                is_generation_current_fn=is_generation_current_fn,
+            )
+            tts_status = 200 if tts_result == "completed" else None
+            if tts_result == "interrupted":
+                interrupted = True
+                _set_state(state_controller, AssistantState.INTERRUPTED, visual_feedback)
+        except asyncio.CancelledError:
             interrupted = True
             _set_state(state_controller, AssistantState.INTERRUPTED, visual_feedback)
-    except asyncio.CancelledError:
-        interrupted = True
-        _set_state(state_controller, AssistantState.INTERRUPTED, visual_feedback)
-    except Exception as exc:
-        logger.error("Streaming pipeline error: %s", exc)
+        except Exception as exc:
+            logger.error("Streaming pipeline error: %s", exc)
 
-    if llm_done_ms is None:
-        llm_done_ms = (time.perf_counter() - llm_start) * 1000
-    timings["llm_ms"] = llm_done_ms
-    timings["tts_ms"] = (time.perf_counter() - tts_start) * 1000
+        if llm_done_ms is None:
+            llm_done_ms = (time.perf_counter() - llm_start) * 1000
+        timings["llm_ms"] = llm_done_ms
+        timings["tts_ms"] = (time.perf_counter() - tts_start) * 1000
 
     if interrupted:
         _set_state(state_controller, AssistantState.INTERRUPTED, visual_feedback)
 
     # ── Emotion parsing + clean text ─────────────────────────────────
-    raw_markdown = assistant_text  # preserve original for display
+    raw_markdown = assistant_text
     if assistant_text.strip():
         emotion_segs = parse_emotion_segments(assistant_text)
         logger.info("🎭 %s", format_emotion_display(emotion_segs))
@@ -337,16 +434,14 @@ async def run_pipeline_streaming(
     else:
         clean_text = assistant_text
 
-    # ── Save to memory (non-fatal, uses clean text) ──────────────────
-    # Skip save if pipeline was cancelled (prevents partial responses
-    # from polluting conversation buffer / memory store)
+    # ── Save to memory (non-fatal) ────────────────────────────────────
     if _is_cancelled():
         logger.info("[pipeline] gen=%d cancelled — skipping buffer/memory save", generation_id)
     else:
         if clean_text.strip():
             try:
                 embed_start = time.perf_counter()
-                memory_manager.add_interaction(text, clean_text)
+                await asyncio.to_thread(memory_manager.add_interaction, text, clean_text, user_id=LOCAL_USER_ID)
                 timings["embedding_ms"] = (time.perf_counter() - embed_start) * 1000
             except Exception as exc:
                 logger.warning("Memory save failed (non-fatal): %s", exc)

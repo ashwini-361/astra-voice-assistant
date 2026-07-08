@@ -4,11 +4,12 @@ import os
 from typing import Dict, List, Optional
 
 import numpy as np
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from core.config import get_settings
+from core.rate_limit import rate_limited_user_id
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -111,8 +112,8 @@ def _softmax(logits: np.ndarray) -> np.ndarray:
     return exps / np.sum(exps)
 
 
-@app.post("/classify", response_model=IntentResponse)
-async def classify(request: IntentRequest) -> IntentResponse:
+@app.post("/api/v1/voice/intents", response_model=IntentResponse)
+async def classify(request: IntentRequest, user_id: str = Depends(rate_limited_user_id)) -> IntentResponse:
     if _fallback_mode or _session is None:
         label = _fallback_intent(request.text)
         return IntentResponse(label=label, scores={"chat": 1.0 if label == "chat" else 0.0}, provider="fallback")
@@ -133,7 +134,7 @@ async def classify(request: IntentRequest) -> IntentResponse:
         raise HTTPException(status_code=500, detail="Intent classification failed") from exc
 
 
-@app.get("/health")
+@app.get("/api/v1/health")
 async def health():
     return {"status": "ok", "service": "intent", "fallback_mode": _fallback_mode}
 

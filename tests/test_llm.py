@@ -1,8 +1,23 @@
 import time
 
+import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
+from core.quota import check_and_increment_quota
+from core.rate_limit import rate_limited_user_id
 from services import llm_service
+from services.llm_models import MCPToolCallRequest
+
+# Auth+rate-limiting+quota is enforced on every route except /health
+# (PR1B/PR3) -- override the shared dependencies for tests, which
+# exercise routing/business logic, not the auth/rate-limit/quota layer
+# itself (that's core/auth.py's, core/rate_limit.py's, and
+# core/quota.py's own concern -- the latter also avoids unit tests
+# needing a real Postgres connection for /api/v1/chat/completions and
+# /api/v1/agent/loop specifically).
+llm_service.app.dependency_overrides[rate_limited_user_id] = lambda: "00000000-0000-0000-0000-000000000000"
+llm_service.app.dependency_overrides[check_and_increment_quota] = lambda: "00000000-0000-0000-0000-000000000000"
 
 
 class _DummyResponse:
@@ -36,7 +51,7 @@ def test_generate(monkeypatch):
 
     with TestClient(llm_service.app) as client:
         start = time.perf_counter()
-        response = client.post("/generate", json={"prompt": "hello"})
+        response = client.post("/api/v1/chat/completions", json={"prompt": "hello"})
         latency = time.perf_counter() - start
 
     print(f"llm latency: {latency:.3f}s")
@@ -51,7 +66,7 @@ def test_generate_stream(monkeypatch):
     monkeypatch.setattr(llm_service._http_session, "post", _fake_post)
 
     with TestClient(llm_service.app) as client:
-        response = client.post("/generate", json={"prompt": "hello", "stream": True})
+        response = client.post("/api/v1/chat/completions", json={"prompt": "hello", "stream": True})
 
     assert response.status_code == 200
     assert "echo:stream" in response.text
@@ -59,22 +74,22 @@ def test_generate_stream(monkeypatch):
 
 def test_settings_update_and_reset():
     with TestClient(llm_service.app) as client:
-        updated = client.post("/settings", json={"provider": "custom", "custom_url": "http://localhost:9999"})
+        updated = client.post("/api/v1/chat/settings", json={"provider": "custom", "custom_url": "http://localhost:9999"})
         assert updated.status_code == 200
         assert updated.json()["settings"]["provider"] == "custom"
 
-        current = client.get("/settings")
+        current = client.get("/api/v1/chat/settings")
         assert current.status_code == 200
         assert current.json()["provider"] == "custom"
 
-        reset = client.post("/settings/reset")
+        reset = client.post("/api/v1/chat/settings/reset")
         assert reset.status_code == 200
         assert reset.json()["settings"]["provider"] in {"ollama", "lmstudio", "openai", "custom"}
 
 
 def test_mcp_file_search_endpoint():
     with TestClient(llm_service.app) as client:
-        response = client.post("/mcp/files/search", json={"query": "LLM", "limit": 3, "path": "services"})
+        response = client.post("/api/v1/mcp/files/search", json={"query": "LLM", "limit": 3, "path": "services"})
     assert response.status_code == 200
     body = response.json()
     assert "matches" in body
@@ -83,10 +98,232 @@ def test_mcp_file_search_endpoint():
 def test_metrics_endpoint(monkeypatch):
     monkeypatch.setattr(llm_service._http_session, "post", _fake_post)
     with TestClient(llm_service.app) as client:
-        _ = client.post("/generate", json={"prompt": "metrics check"})
-        response = client.get("/metrics")
+        _ = client.post("/api/v1/chat/completions", json={"prompt": "metrics check"})
+        response = client.get("/api/v1/chat/metrics")
     assert response.status_code == 200
     body = response.json()
     assert "latency_ms" in body
     assert "throughput" in body
     assert "errors" in body
+
+
+def test_mcp_catalog_filters_unavailable_servers(monkeypatch):
+    monkeypatch.setattr(
+        llm_service,
+        "list_servers",
+        lambda: {
+            "builtin": [{"name": "file-search", "tools": ["search_files"]}],
+            "custom": [{"name": "private-docs", "enabled": False, "tools": ["write_doc"]}],
+        },
+    )
+    monkeypatch.setattr(
+        llm_service.mcp_bridge,
+        "list_servers",
+        lambda: [
+            {"name": "duckduckgo", "status": "running"},
+            {"name": "youtube_transcript", "status": "error"},
+        ],
+    )
+    monkeypatch.setattr(
+        llm_service.mcp_bridge,
+        "list_all_tools",
+        lambda: [{"server": "duckduckgo", "tool": "search", "description": "web search"}],
+    )
+
+    with TestClient(llm_service.app) as client:
+        response = client.get("/api/v1/mcp/catalog")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert any(t["server"] == "duckduckgo" and t["tool"] == "search" for t in body["tools"])
+    assert any(s["server"] == "youtube_transcript" for s in body["unavailable_servers"])
+    assert any(s["server"] == "private-docs" for s in body["unavailable_servers"])
+
+
+def test_execute_tool_call_returns_typed_http_error(monkeypatch):
+    def _boom(_request):
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "MCP server not found", "error_type": "not_found"},
+        )
+
+    monkeypatch.setattr(llm_service, "call_tool", _boom)
+    monkeypatch.setattr(llm_service.mcp_bridge, "get_server", lambda _name: None)
+
+    result = llm_service._execute_tool_call(  # pylint: disable=protected-access
+        MCPToolCallRequest(server="missing", tool="search_files", arguments={})
+    )
+    assert result["ok"] is False
+    assert result["status_code"] == 404
+    assert result["error_type"] == "not_found"
+
+
+@pytest.mark.xfail(
+    reason="pre-existing test-isolation gap (TestClient startup triggers real "
+    "MCP discovery/Ollama warmup network calls), see docs/backlog.md "
+    "(Phase A code review, 2026-07-08)",
+)
+def test_agent_loop_records_typed_tool_error(monkeypatch):
+    outputs = iter(
+        [
+            '{"action":"tool","server":"file-search","tool":"search_files","arguments":{"query":"x","limit":1}}',
+            '{"action":"final","response":"done"}',
+        ]
+    )
+    monkeypatch.setattr(llm_service, "_llm_call_text", lambda _prompt, _settings: next(outputs))
+    monkeypatch.setattr(
+        llm_service,
+        "list_servers",
+        lambda: {"builtin": [{"name": "file-search", "tools": ["search_files"]}], "custom": []},
+    )
+    monkeypatch.setattr(llm_service.mcp_bridge, "list_servers", lambda: [])
+    monkeypatch.setattr(llm_service.mcp_bridge, "list_all_tools", lambda: [])
+    monkeypatch.setattr(llm_service.mcp_bridge, "get_server", lambda _name: None)
+
+    def _fail_tool(_request):
+        raise HTTPException(status_code=504, detail={"error": "Custom MCP timeout", "error_type": "timeout"})
+
+    monkeypatch.setattr(llm_service, "call_tool", _fail_tool)
+
+    with TestClient(llm_service.app) as client:
+        response = client.post("/api/v1/agent/loop", json={"prompt": "test mcp loop", "max_steps": 2})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["response"] == "done"
+    first_step = body["steps"][0]
+    assert first_step["result"]["ok"] is False
+    assert first_step["result"]["error_type"] == "timeout"
+    assert first_step["result"]["status_code"] == 504
+    assert isinstance(first_step["latency_ms"], int)
+
+
+def test_normalize_action_hybrid_tool_object_falls_back_to_search():
+    tool_specs = [{"server": "duckduckgo", "tool": "search"}, {"server": "browser-search", "tool": "read_page"}]
+    action = {"tool": {"server": "duckduckgo", "name": "server:duckduckgo"}}
+
+    normalized = llm_service._normalize_action(  # pylint: disable=protected-access
+        action, tool_specs, user_query="latest ai voice assistant"
+    )
+
+    assert normalized["tool"] == "search"
+    assert normalized["server"] == "duckduckgo"
+    assert normalized["arguments"] == {"query": "latest ai voice assistant"}
+
+
+def test_normalize_action_dot_notation():
+    tool_specs = [{"server": "duckduckgo", "tool": "search"}]
+    action = {"tool": "duckduckgo.search", "arguments": {"query": "weather"}}
+
+    normalized = llm_service._normalize_action(action, tool_specs)  # pylint: disable=protected-access
+
+    assert normalized["tool"] == "search"
+    assert normalized["server"] == "duckduckgo"
+    assert normalized["arguments"] == {"query": "weather"}
+
+
+def test_disabled_builtin_tool_returns_error():
+    with TestClient(llm_service.app) as client:
+        toggle = client.patch("/api/v1/mcp/servers/browser-search/enabled", json={"enabled": False})
+        assert toggle.status_code == 200
+
+        response = client.post(
+            "/api/v1/mcp/tools/call",
+            json={"server": "browser-search", "tool": "search_web", "arguments": {"query": "x"}},
+        )
+        assert response.status_code == 400
+        assert "disabled" in str(response.json().get("detail", "")).lower()
+
+        reenable = client.patch("/api/v1/mcp/servers/browser-search/enabled", json={"enabled": True})
+        assert reenable.status_code == 200
+
+
+def test_toggle_builtin_server_reflected_in_list():
+    with TestClient(llm_service.app) as client:
+        disable = client.patch("/api/v1/mcp/servers/browser-search/enabled", json={"enabled": False})
+        assert disable.status_code == 200
+
+        listed = client.get("/api/v1/mcp/servers")
+        assert listed.status_code == 200
+        browser = next(s for s in listed.json()["builtin"] if s["name"] == "browser-search")
+        assert browser["enabled"] is False
+
+        enable = client.patch("/api/v1/mcp/servers/browser-search/enabled", json={"enabled": True})
+        assert enable.status_code == 200
+
+
+def test_normalize_action_auto_corrects_obsidian_append_schema():
+    tool_specs = [{"server": "obsidian", "tool": "obsidian_append_content"}]
+    action = {
+        "server": "obsidian",
+        "tool": "append_content",
+        "arguments": {"path": "Daily.md", "content": "hello"},
+    }
+
+    normalized = llm_service._normalize_action(action, tool_specs, user_query="save note")  # pylint: disable=protected-access
+
+    assert normalized["server"] == "obsidian"
+    assert normalized["tool"] == "obsidian_append_content"
+    assert normalized["arguments"]["filepath"] == "Daily.md"
+    assert normalized["arguments"]["content"] == "hello"
+
+
+def test_normalize_action_routes_news_to_search_when_tool_invalid():
+    tool_specs = [
+        {"server": "duckduckgo", "tool": "search"},
+        {"server": "obsidian", "tool": "obsidian_append_content"},
+    ]
+    action = {"server": "obsidian", "tool": "obsidian_append_content", "arguments": {"filepath": "x.md"}}
+
+    normalized = llm_service._normalize_action(action, tool_specs, user_query="latest ai news")  # pylint: disable=protected-access
+
+    # Missing required content forces fallback; intent router should choose search.
+    assert normalized["server"] == "duckduckgo"
+    assert normalized["tool"] == "search"
+    assert normalized["arguments"]["query"] == "latest ai news"
+
+
+def test_agent_loop_returns_uniform_response_contract(monkeypatch):
+    outputs = iter([
+        '{"action":"final","response":"done"}',
+    ])
+    monkeypatch.setattr(llm_service, "_llm_call_text", lambda _prompt, _settings: next(outputs))
+    monkeypatch.setattr(
+        llm_service,
+        "list_servers",
+        lambda: {"builtin": [{"name": "file-search", "tools": ["search_files"]}], "custom": []},
+    )
+    monkeypatch.setattr(llm_service.mcp_bridge, "list_servers", lambda: [])
+    monkeypatch.setattr(llm_service.mcp_bridge, "list_all_tools", lambda: [])
+
+    with TestClient(llm_service.app) as client:
+        response = client.post("/api/v1/agent/loop", json={"prompt": "test envelope", "max_steps": 1})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["success"] is True
+    assert body["error"] is None
+    assert isinstance(body["result"], dict)
+    assert body["result"]["response"] == "done"
+    assert "steps" in body["result"]
+    # Backward-compatible fields remain available.
+    assert body["status"] == "ok"
+    assert body["response"] == "done"
+
+
+def test_validate_action_contract_rejects_missing_required_args():
+    tool_specs = [{"server": "browser-search", "tool": "read_page"}]
+    requirements = llm_service._tool_requirements_from_specs(tool_specs)  # pylint: disable=protected-access
+    action = {"action": "tool", "server": "browser-search", "tool": "read_page", "arguments": {}}
+
+    valid, error, meta = llm_service._validate_action_contract(  # pylint: disable=protected-access
+        action,
+        tool_specs,
+        requirements,
+    )
+
+    assert valid is False
+    assert "missing required arguments" in str(error)
+    assert isinstance(meta, dict)
+    assert meta["missing"] == ["url"]

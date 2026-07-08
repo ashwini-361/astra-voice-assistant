@@ -1,7 +1,7 @@
-const API_BASE = 'http://127.0.0.1:8004';
+const API_BASE = import.meta.env.VITE_INTENT_API_BASE ?? 'http://127.0.0.1:8004';
 
 export const classifyIntent = async (text: string) => {
-  const response = await fetch(`${API_BASE}/classify`, {
+  const response = await fetch(`${API_BASE}/api/v1/voice/intents`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text }),

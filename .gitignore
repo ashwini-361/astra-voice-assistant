@@ -29,5 +29,12 @@ pytest-cache-files-*/
 .vscode/
 .idea/
 
+# Private local agent notes/config
+.claude/
+
 # Local model/download caches
 .hf_cache/
+
+# Local machine-specific runtime config (mic device, model choice, etc.)
+.env
+

@@ -28,6 +28,7 @@ class AudioListener:
         on_barge_in: Optional[Callable[[], None]] = None,
         sample_rate: int = 16000,
         channels: int = 1,
+        device: Optional[int] = None,
     ) -> None:
         self._vad = vad_engine
         self._interrupt_controller = interrupt_controller
@@ -35,6 +36,7 @@ class AudioListener:
         self._on_barge_in = on_barge_in
         self._sample_rate = sample_rate
         self._channels = channels
+        self._device = device
         self._stream = None
         self._enabled = threading.Event()
         self._started = False
@@ -98,6 +100,7 @@ class AudioListener:
         if self._started:
             return True
         self._stream = sd.InputStream(
+            device=self._device,
             samplerate=self._sample_rate,
             channels=self._channels,
             callback=self._callback,

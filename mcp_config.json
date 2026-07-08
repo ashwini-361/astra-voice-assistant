@@ -1,0 +1,100 @@
+{
+  "mcpServers": {
+    "time": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "mcp/time"
+      ],
+      "env": {},
+      "autoStart": true
+    },
+    "youtube_transcript": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "mcp/youtube-transcript"
+      ],
+      "env": {},
+      "autoStart": true
+    },
+    "fetch": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "mcp/fetch"
+      ],
+      "env": {},
+      "autoStart": true
+    },
+    "obsidian": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-e",
+        "OBSIDIAN_API_URL=https://host.docker.internal:27124",
+        "-e",
+        "OBSIDIAN_API_KEY=REPLACE_WITH_YOUR_OBSIDIAN_API_KEY",
+        "-e",
+        "OBSIDIAN_PROTOCOL=https",
+        "-v",
+        "C:/Users/hp/Documents/ObsidianVault:/vault",
+        "mcp/obsidian"
+      ],
+      "env": {
+        "OBSIDIAN_API_URL": "https://host.docker.internal:27124",
+        "OBSIDIAN_HOST": "host.docker.internal",
+        "OBSIDIAN_PORT": "27124",
+        "OBSIDIAN_PROTOCOL": "https",
+        "OBSIDIAN_API_KEY": "REPLACE_WITH_YOUR_OBSIDIAN_API_KEY"
+      },
+      "autoStart": true
+    }
+  },
+  "capability_policy": {
+    "search": [
+      {
+        "server": "duckduckgo",
+        "priority": 0.95
+      },
+      {
+        "server": "browser-search",
+        "priority": 0.8
+      }
+    ],
+    "fetch": [
+      {
+        "server": "duckduckgo",
+        "priority": 0.95
+      },
+      {
+        "server": "fetch",
+        "priority": 0.85
+      },
+      {
+        "server": "browser-search",
+        "priority": 0.6
+      }
+    ],
+    "time": [
+      {
+        "server": "time",
+        "priority": 1.0
+      }
+    ],
+    "storage": [
+      {
+        "server": "obsidian",
+        "priority": 0.95
+      }
+    ]
+  }
+}

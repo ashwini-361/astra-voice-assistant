@@ -18,11 +18,13 @@ import httpx
 
 from duplex.audio_listener import AudioListener
 from duplex.interrupt_controller import InterruptController
+from duplex.mic_devices import resolve_device
 from duplex.speech_capture import CaptureDiagnostics, SpeechCapture
 from duplex.state_machine import AssistantStateController
 from duplex.stream_manager import ResponseStreamManager
 from duplex.vad_engine import VADEngine
-from core.config import get_settings
+from core.auth import LOCAL_USER_ID, local_service_auth_headers
+from core.config import get_settings, resolve_host
 from memory.memory_manager import MemoryManager
 from orchestrator.memory_buffer import ConversationBuffer
 from orchestrator.pipeline import run_pipeline, run_pipeline_streaming
@@ -57,9 +59,9 @@ async def _check_service(url: str) -> bool:
 
 def _preflight_for_voice(max_wait_seconds: int = 90) -> None:
     settings = get_settings()
-    whisper_url = f"http://127.0.0.1:{settings.whisper_port}/health"
-    llm_url = f"http://127.0.0.1:{settings.llm_port}/health"
-    tts_url = f"http://127.0.0.1:{settings.tts_port}/health"
+    whisper_url = f"http://{resolve_host(settings.whisper_host)}:{settings.whisper_port}/api/v1/health"
+    llm_url = f"http://{resolve_host(settings.llm_host)}:{settings.llm_port}/api/v1/health"
+    tts_url = f"http://{resolve_host(settings.tts_host)}:{settings.tts_port}/api/v1/health"
 
     deadline = time.perf_counter() + max_wait_seconds
     missing = ["whisper", "llm", "tts"]
@@ -82,7 +84,7 @@ def _preflight_for_voice(max_wait_seconds: int = 90) -> None:
 
 def _preflight_for_whisper(max_wait_seconds: int = 90) -> None:
     settings = get_settings()
-    whisper_url = f"http://127.0.0.1:{settings.whisper_port}/health"
+    whisper_url = f"http://{resolve_host(settings.whisper_host)}:{settings.whisper_port}/api/v1/health"
     deadline = time.perf_counter() + max_wait_seconds
     while time.perf_counter() < deadline:
         if asyncio.run(_check_service(whisper_url)):
@@ -96,13 +98,14 @@ def _preflight_for_whisper(max_wait_seconds: int = 90) -> None:
 
 async def _transcribe_wav_bytes(wav_bytes: bytes) -> str:
     settings = get_settings()
-    base_url = f"{settings.whisper_host}:{settings.whisper_port}" if settings.whisper_host.startswith("http") else f"http://127.0.0.1:{settings.whisper_port}"
+    host = resolve_host(settings.whisper_host)
+    base_url = f"{host}:{settings.whisper_port}" if host.startswith("http") else f"http://{host}:{settings.whisper_port}"
     last_exc: Exception | None = None
     async with httpx.AsyncClient(timeout=60.0) as client:
         for attempt in range(1, 4):
             try:
                 files = {"audio_file": ("live.wav", wav_bytes, "audio/wav")}
-                response = await client.post(f"{base_url}/transcribe", files=files)
+                response = await client.post(f"{base_url}/api/v1/voice/transcriptions", files=files, headers=local_service_auth_headers())
                 response.raise_for_status()
                 data = response.json()
                 return str(data.get("text", "")).strip()
@@ -269,17 +272,18 @@ async def _run_duplex_async(
     import requests as _requests
 
     settings = get_settings()
+    _tts_host = resolve_host(settings.tts_host)
     _tts_stop_url = (
-        f"{settings.tts_host}:{settings.tts_port}"
-        if settings.tts_host.startswith("http")
-        else f"http://127.0.0.1:{settings.tts_port}"
+        f"{_tts_host}:{settings.tts_port}"
+        if _tts_host.startswith("http")
+        else f"http://{_tts_host}:{settings.tts_port}"
     )
 
     def _barge_in_stop() -> None:
         """Fire-and-forget TTS /stop from the audio callback thread."""
         def _do_stop():
             try:
-                _requests.post(f"{_tts_stop_url}/stop", timeout=1.0)
+                _requests.post(f"{_tts_stop_url}/api/v1/voice/playback/stop", timeout=1.0, headers=local_service_auth_headers())
                 logger.debug("[barge-in] TTS /stop sent")
             except Exception:  # pylint: disable=broad-except
                 pass
@@ -290,7 +294,7 @@ async def _run_duplex_async(
     # ── Pre-warm the embedding model (lazy-loads on first call) ────────
     logger.info("[duplex] Pre-warming embedding model…")
     memory_manager = MemoryManager()
-    await loop.run_in_executor(None, memory_manager.retrieve, "warmup")
+    await loop.run_in_executor(None, lambda: memory_manager.retrieve("warmup", user_id=LOCAL_USER_ID))
     logger.info("[duplex] Embedding model ready")
 
     pipeline_task: asyncio.Task | None = None
@@ -406,8 +410,12 @@ def main() -> None:
             last_vad_state = is_speech
             last_vad_log_ts = now
 
-    audio_listener = AudioListener(vad, interrupt_controller, on_vad=_on_vad)
-    speech_capture = SpeechCapture(capture_vad)
+    mic_device = resolve_device(get_settings().mic_device)
+    if mic_device is not None:
+        logger.info("[voice] Using configured mic device index=%s", mic_device)
+
+    audio_listener = AudioListener(vad, interrupt_controller, on_vad=_on_vad, device=mic_device)
+    speech_capture = SpeechCapture(capture_vad, device=mic_device)
 
     try:
         if args.whisper_test:

@@ -5,7 +5,9 @@ from collections import deque
 from dataclasses import dataclass
 
 
-def _estimate_tokens(text: str) -> int:
+def estimate_tokens(text: str) -> int:
+    """Chars/4 approximation, not an exact tokenizer count -- shared by
+    LLMMetrics (below) and core/quota.py's monthly quota tracking."""
     if not text:
         return 0
     return max(1, int(len(text) / 4))
@@ -26,7 +28,7 @@ class LLMMetrics:
         self._latency_samples = deque(maxlen=max_latency_samples)
 
     def record_success(self, latency_seconds: float, response_text: str) -> None:
-        tokens = _estimate_tokens(response_text)
+        tokens = estimate_tokens(response_text)
         with self._lock:
             self._totals.requests += 1
             self._totals.total_tokens += tokens

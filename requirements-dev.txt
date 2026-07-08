@@ -1,0 +1,4 @@
+# Dev-only tooling for `make lint`. Not needed at runtime, not in the
+# container image — installed on demand into venv by the Makefile.
+ruff==0.6.9
+black==24.8.0

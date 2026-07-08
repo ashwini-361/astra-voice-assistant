@@ -14,6 +14,8 @@ import requests
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
+from core.config import get_settings
+
 ROOT_DIR = Path(__file__).resolve().parents[1]
 LOCAL_PYTHON = ROOT_DIR / "venv" / "python.exe"
 DEFAULT_PYTHON = LOCAL_PYTHON if LOCAL_PYTHON.exists() else Path(sys.executable)
@@ -28,7 +30,7 @@ class ServiceConfig:
 
     @property
     def health_url(self) -> str:
-        return f"http://127.0.0.1:{self.port}/health"
+        return f"http://127.0.0.1:{self.port}/api/v1/health"
 
     @property
     def command(self) -> list[str]:
@@ -51,18 +53,25 @@ class ServiceManager:
         self._watcher_thread: threading.Thread | None = None
         self._bootstrap_thread: threading.Thread | None = None
 
+        settings = get_settings()
+        # Deliberately excludes the gateway (and Postgres): Phase C keeps
+        # them Docker-Compose-only, per ADR-006's canonical-startup-path
+        # decision -- see docs/api/gateway.md. Not an oversight.
         self._configs: dict[str, ServiceConfig] = {
-            "whisper": ServiceConfig("whisper", "services.whisper_service", 8001, 180),
-            "llm": ServiceConfig("llm", "services.llm_service", 8002, 180),
-            "tts": ServiceConfig("tts", "services.tts_service", 8003, 120),
-            "intent": ServiceConfig("intent", "services.intent_service", 8004, 120),
+            "whisper": ServiceConfig("whisper", "services.whisper_service", settings.whisper_port, 180),
+            "llm": ServiceConfig("llm", "services.llm_service", settings.llm_port, 180),
+            "tts": ServiceConfig("tts", "services.tts_service", settings.tts_port, 120),
+            "intent": ServiceConfig("intent", "services.intent_service", settings.intent_port, 120),
         }
         self._order = ["whisper", "llm", "tts", "intent"]
         self._processes: dict[str, subprocess.Popen[Any] | None] = {name: None for name in self._configs}
+        self._log_files: dict[str, Any | None] = {name: None for name in self._configs}
         self._restart_count: dict[str, int] = {name: 0 for name in self._configs}
         self._last_reason: dict[str, str] = {name: "never" for name in self._configs}
         self._last_error: dict[str, str | None] = {name: None for name in self._configs}
         self._last_start_at: dict[str, float | None] = {name: None for name in self._configs}
+        self._logs_dir = ROOT_DIR / "logs" / "dev-manager"
+        self._logs_dir.mkdir(parents=True, exist_ok=True)
 
         self._file_map = {
             "services/tts_service.py": "tts",
@@ -145,17 +154,28 @@ class ServiceManager:
         env = os.environ.copy()
         env.setdefault("PYTHONUNBUFFERED", "1")
         env.setdefault("AI_ASSISTANT_TTS_BACKEND", "edge")
+        log_path = self._logs_dir / f"{service_name}.log"
+        log_file = open(log_path, "a", encoding="utf-8")
+        log_file.write(f"\n=== restart reason={reason} at={time.strftime('%Y-%m-%d %H:%M:%S')} ===\n")
+        log_file.flush()
 
         process = subprocess.Popen(
             cfg.command,
             cwd=str(ROOT_DIR),
             env=env,
-            stdout=subprocess.DEVNULL,
+            stdout=log_file,
             stderr=subprocess.STDOUT,
         )
 
         with self._lock:
             self._processes[service_name] = process
+            old_log = self._log_files.get(service_name)
+            if old_log is not None:
+                try:
+                    old_log.close()
+                except Exception:
+                    pass
+            self._log_files[service_name] = log_file
             self._restart_count[service_name] += 1
             self._last_reason[service_name] = reason
             self._last_error[service_name] = None
@@ -193,6 +213,13 @@ class ServiceManager:
 
         with self._lock:
             self._processes[service_name] = None
+            log_file = self._log_files.get(service_name)
+            if log_file is not None:
+                try:
+                    log_file.close()
+                except Exception:
+                    pass
+                self._log_files[service_name] = None
 
     def _kill_port_listeners(self, port: int, exclude_pid: int | None = None) -> None:
         for conn in psutil.net_connections(kind="inet"):
