@@ -18,7 +18,8 @@ Consequences, Alternatives considered, Review date, Source.
 | [ADR-004](ADR-004-loop-separation.md) | Keep the realtime voice loop and agent loop strictly isolated |
 | [ADR-005](ADR-005-cloud-aws.md) | Target cloud platform is AWS |
 | [ADR-006](ADR-006-v1-architecture-freeze.md) | v1.0 architecture freeze (env vars, core APIs, Docker/Compose, canonical startup path); MCP/agent-tool surface explicitly excluded |
+| [ADR-007](ADR-007-multiuser-pivot.md) | Multi-user architecture pivot (Phase C, local-only): supersedes ADR-001's timing, amends ADR-006's frozen surface (`/api/v1/`, gateway, Postgres) |
 
-New architectural decisions should be added here as `ADR-007`, etc., once
+New architectural decisions should be added here as `ADR-008`, etc., once
 actually locked (not while still under discussion as options in a phase
 plan).

@@ -5,6 +5,7 @@ architecture, known risks) is at [`../README.md`](../README.md).
 
 - [`roadmap/`](roadmap/) -- the hosted web-service phase plan.
 - [`adr/`](adr/) -- Architecture Decision Records.
+- [`api/`](api/) -- API endpoint contracts (auth, gateway, voice, memory).
 - [`architecture/`](architecture/) -- durable design docs.
 - [`development/`](development/) -- quick start and testing guides.
 - [`deployment/`](deployment/) -- reserved for the AWS deployment phase (not started).

@@ -38,10 +38,18 @@ Voice latency and autonomous reasoning have different requirements. If they shar
 
 The key change from v1: **deploy and instrument before adding auth/users.** You cannot measure latency, GPU utilization, websocket stability, or memory usage without a deployed backend — and you'll redesign parts of it after seeing real traffic.
 
+**Superseded by Phase C (see ADR-007):** the sequencing below still
+reflects the *original* v1 rationale above. Phase C pulls auth/user
+isolation (originally W3) forward to before any AWS work, built and
+proven locally first — see the Phase C entry after Phase B for the
+current, actual sequencing.
+
 ```
 W-1  Developer Experience   (one command up)
   |
 B    Architecture freeze   (ADR-006, new — not in original order)
+  |
+C    Multi-user Foundation (Local)   (ADR-007, new — not in original order)
   |
 W0   Decisions + AWS setup
   |
@@ -49,7 +57,7 @@ W1   Deploy + streaming      (single-user, on AWS)
   |
 W2   Monitoring + admission control  <- BEFORE multi-user
   |
-W3   Auth + user isolation
+W3   Auth + user isolation   (superseded by Phase C, kept for history)
   |
 W4   Quotas + feature flags + admin page
   |
@@ -87,6 +95,32 @@ Docker Compose is declared the canonical, AWS-bound startup path over
 the native `start_stack.ps1`/`dev_manager.py` paths.
 
 **Exit:** ADR-006 accepted and merged into `dev-init`.
+
+---
+
+### Phase C — Multi-user Foundation (Local) *(new, before W0)*
+
+Not in the original phase order above — a deliberate pivot pulling the
+multi-user architecture (originally Phase W3, below) forward to now,
+built and validated entirely locally via Docker Compose, before any AWS
+work. Rationale: application-architecture changes and cloud/infra
+changes are orthogonal concerns; debugging both at once (as W1→W3 would
+have once AWS entered the picture) makes failures hard to attribute.
+Declared in **`docs/adr/ADR-007-multiuser-pivot.md`** (supersedes
+ADR-001's timing, amends ADR-006's frozen surface) and
+**`docs/api/`** (endpoint contracts written before implementation).
+
+Delivered as 3 sequenced PRs: (1) Postgres + user model + OAuth/JWT +
+`/api/v1/` versioning, with an auth-only gateway (no data-plane
+proxying — see `docs/api/gateway.md`); (2) per-user Qdrant isolation +
+Postgres-sourced conversation history (Postgres is the source of truth,
+Qdrant a derived index); (3) quotas + rate limiting + structured logging.
+AWS deployment is a separate, later **Phase D**, not covered here.
+
+**Exit:** two accounts log in, chat, and neither can see the other's
+memory or history (locally, via Docker Compose) — the same privacy-
+critical guarantee Phase W3 originally targeted, just built now instead
+of after a single-user AWS deploy.
 
 ---
 
@@ -149,7 +183,13 @@ Still busy? -- yes --> reject with "retry later"
 
 ---
 
-### Phase W3 — Auth + per-user isolation (1-2 weeks)
+### Phase W3 — Auth + per-user isolation (1-2 weeks) *(superseded by Phase C)*
+
+**Superseded:** this phase's content was pulled forward and delivered by
+**Phase C** (above), built locally before AWS instead of after a
+single-user deploy — see `docs/adr/ADR-007-multiuser-pivot.md`. Kept here
+for historical context; the design below is what Phase C actually
+implements, just on a different timeline.
 
 Now that you can measure, add users.
 
@@ -254,13 +294,17 @@ This matches where MCP infrastructure is heading: a gateway centralizing server 
 
 1. **W-1** One-command dev environment (2-3 days)
 2. **B** Architecture freeze (ADR-006 — done)
-3. **W0** Decisions + AWS setup (2-3 days)
-4. **W1** Deploy pipeline + WebSocket streaming, single-user (1-2 wks)
-5. **W2** Monitoring + admission control — *before* multi-user (4-6 days)
-6. **W3** OAuth + per-user isolation (1-2 wks)
-7. **W4** Quotas + feature flags + admin page (1-2 wks)
-8. **W5** Tools behind permission filter (overlaps agent Phase 0/1)
-9. **W6** Resume agent roadmap against real traffic
+3. **C** Multi-user Foundation, local (ADR-007 — in progress, 3 PRs)
+4. **W0** Decisions + AWS setup (2-3 days)
+5. **W1** Deploy pipeline + WebSocket streaming, single-user (1-2 wks)
+6. **W2** Monitoring + admission control — *before* multi-user (4-6 days)
+7. ~~**W3** OAuth + per-user isolation~~ — superseded by Phase C
+8. **W4** Quotas + feature flags + admin page (1-2 wks) — note: Phase C's
+   PR3 already delivers a minimal quotas+rate-limiting subset; W4 here
+   narrows to feature flags + admin page + any quota dimensions Phase C
+   deferred (GPU-seconds/audio-minutes/tool-call/concurrent-stream quotas)
+9. **W5** Tools behind permission filter (overlaps agent Phase 0/1)
+10. **W6** Resume agent roadmap against real traffic
 
 **Rough total to v1:** ~6-9 weeks, with W5 doubling as agent-track progress.
 
