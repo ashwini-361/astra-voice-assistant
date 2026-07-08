@@ -5,19 +5,17 @@ docker compose --profile tools run --rm seed (or `make seed`).
 Seeds under the reserved local/service user (core.auth.LOCAL_USER_ID,
 same identity the native voice loop and make smoke authenticate as --
 see docs/api/auth.md) since conversations.user_id is now a required FK
-into users(id). This just proves the memory pipeline (Postgres insert ->
-embed -> Qdrant upsert -> retrieve) works end-to-end against the composed
-Postgres+Qdrant containers.
+into users(id). The row itself is guaranteed to already exist by
+db/migrations/versions/76936a1ecf9d_seed_reserved_local_user.py (`make
+seed` depends on `make migrate`) -- this script just proves the memory
+pipeline (Postgres insert -> embed -> Qdrant upsert -> retrieve) works
+end-to-end against the composed Postgres+Qdrant containers.
 """
 import logging
 import sys
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
-
-from core.auth import LOCAL_USER_EMAIL, LOCAL_USER_ID
-from db.models import User
-from memory.memory_manager import MemoryManager, _get_sync_engine
+from core.auth import LOCAL_USER_ID
+from memory.memory_manager import MemoryManager
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("seed")
@@ -29,18 +27,8 @@ SAMPLE_INTERACTIONS = [
 ]
 
 
-def _ensure_local_user() -> None:
-    with Session(_get_sync_engine()) as session:
-        existing = session.execute(select(User).where(User.id == LOCAL_USER_ID)).scalar_one_or_none()
-        if existing is None:
-            session.add(User(id=LOCAL_USER_ID, email=LOCAL_USER_EMAIL, provider="local", provider_sub="local"))
-            session.commit()
-            logger.info("Seeded reserved local user (%s)", LOCAL_USER_ID)
-
-
 def main() -> int:
     try:
-        _ensure_local_user()
         manager = MemoryManager()
     except Exception as exc:  # pylint: disable=broad-except
         logger.error("Could not initialize MemoryManager (Postgres/Qdrant unreachable?): %s", exc)
