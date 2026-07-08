@@ -42,6 +42,7 @@ def _base_urls() -> dict[str, str]:
         "llm": f"http://{resolve_host(settings.llm_host)}:{settings.llm_port}",
         "tts": f"http://{resolve_host(settings.tts_host)}:{settings.tts_port}",
         "intent": f"http://{resolve_host(settings.intent_host)}:{settings.intent_port}",
+        "gateway": f"http://{resolve_host(settings.gateway_host)}:{settings.gateway_port}",
     }
 
 

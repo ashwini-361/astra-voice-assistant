@@ -50,7 +50,7 @@ def _looks_like_sentence_end(text: str) -> bool:
 async def _fetch_chunk_profile(client: httpx.AsyncClient) -> ChunkProfile:
     url = _tts_url()
     try:
-        resp = await client.get(f"{url}/streaming-config", timeout=2.0)
+        resp = await client.get(f"{url}/api/v1/voice/streaming-config", timeout=2.0)
         resp.raise_for_status()
         data = resp.json()
         return ChunkProfile(

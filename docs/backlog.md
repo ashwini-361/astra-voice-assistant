@@ -35,6 +35,45 @@ one non-strict since it depends on network reachability) so the new CI
 pre-existing, already-tracked issues. Un-xfail each one when its
 underlying bug is actually fixed.
 
+## Found during Phase C PR1A code review (2026-07-08)
+
+- **Per-decorator `/api/v1` prefix, not `APIRouter(prefix=...)`.** The
+  bulk route rename to `/api/v1/{voice,chat,agent}/*` was done by editing
+  ~50 individual `@app.get/post/...` decorators across
+  `services/{whisper,llm,tts,intent}_service.py` rather than mounting
+  routes under a shared `APIRouter(prefix="/api/v1")`. Works today, but
+  any future prefix change (e.g. `/api/v2`) requires the same
+  error-prone mechanical edit across all 4 files again. Worth a
+  refactor to `APIRouter` when touching these files next, not urgent now.
+- **`/api/v1/mcp/*` and `/api/v1/tools/toggle` have no stability marker**
+  distinguishing them from the deliberately-designed `chat`/`voice`/`agent`
+  resource routes -- they were bulk-prefixed only (per ADR-006/007's MCP
+  exclusion from the freeze), so `/api/v1` now mixes stable and
+  still-churning routes with no way to tell them apart from the URL
+  alone. Consider an `/api/v1/internal/mcp/*` or similar marker when this
+  surface is next redesigned (agent roadmap, Phase W5/W6).
+- **`core/config.py`'s `gateway_host`/`gateway_port` fields are unused.**
+  `services/gateway/main.py` and `docker-compose.yml`'s `gateway` service
+  hardcode `0.0.0.0:8000` rather than reading these settings -- consistent
+  with how whisper/llm/tts/intent's own bind address is also hardcoded in
+  their compose `command:` (the `*_host`/`*_port` settings are consumed by
+  *callers* via `resolve_host()`, not by the services binding to them), so
+  this isn't a regression, just currently-dead config. Will matter once
+  something needs to call the gateway besides the frontend's hardcoded
+  `VITE_GATEWAY_API_BASE`.
+- **`db/session.py`'s cached engine/sessionmaker have no shutdown/dispose
+  hook.** Not a leak under today's single-process, no-DB-traffic-yet
+  skeleton, but worth adding a FastAPI lifespan shutdown hook in
+  `services/gateway/main.py` before PR1B starts issuing real DB queries
+  through `get_db()`.
+- **`db/migrations/env.py`'s `_sync_dsn()`** does a blind
+  `.replace("+asyncpg", "+psycopg2")` on the configured DSN with no
+  validation that the substring is present/well-formed. Works today
+  because the default DSN always has `+asyncpg`, but a malformed
+  `AI_ASSISTANT_POSTGRES_DSN` would silently no-op this substitution
+  rather than failing with a clear config error. Consider a small
+  assertion or regex-based swap.
+
 ## Found during Phase A code review (2026-07-08)
 
 `core/config.py::resolve_host()` only centralizes the `0.0.0.0`/`::` ->
