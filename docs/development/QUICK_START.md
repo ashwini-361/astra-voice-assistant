@@ -12,10 +12,10 @@
 
 ## 3) Health checks
 ```powershell
-curl http://127.0.0.1:8001/health
-curl http://127.0.0.1:8002/health
-curl http://127.0.0.1:8003/health
-curl http://127.0.0.1:8004/health
+curl http://127.0.0.1:8001/api/v1/health
+curl http://127.0.0.1:8002/api/v1/health
+curl http://127.0.0.1:8003/api/v1/health
+curl http://127.0.0.1:8004/api/v1/health
 ```
 
 ## 4) Run duplex
@@ -26,27 +26,27 @@ curl http://127.0.0.1:8004/health
 ## Runtime TTS tuning (no restart required)
 Read current settings:
 ```powershell
-curl http://127.0.0.1:8003/settings
+curl http://127.0.0.1:8003/api/v1/voice/settings
 ```
 
 Apply balanced low-latency preset:
 ```powershell
-curl -X POST http://127.0.0.1:8003/settings -H "Content-Type: application/json" -d '{"backend":"edge","edge_base_rate_pct":8,"chunk_initial_words":5,"chunk_steady_words":14,"chunk_max_chars":140}'
+curl -X POST http://127.0.0.1:8003/api/v1/voice/settings -H "Content-Type: application/json" -d '{"backend":"edge","edge_base_rate_pct":8,"chunk_initial_words":5,"chunk_steady_words":14,"chunk_max_chars":140}'
 ```
 
 Faster but slightly less natural:
 ```powershell
-curl -X POST http://127.0.0.1:8003/settings -H "Content-Type: application/json" -d '{"chunk_initial_words":4,"chunk_steady_words":10,"edge_base_rate_pct":12}'
+curl -X POST http://127.0.0.1:8003/api/v1/voice/settings -H "Content-Type: application/json" -d '{"chunk_initial_words":4,"chunk_steady_words":10,"edge_base_rate_pct":12}'
 ```
 
 More natural but slower first speech:
 ```powershell
-curl -X POST http://127.0.0.1:8003/settings -H "Content-Type: application/json" -d '{"chunk_initial_words":7,"chunk_steady_words":18,"edge_base_rate_pct":6}'
+curl -X POST http://127.0.0.1:8003/api/v1/voice/settings -H "Content-Type: application/json" -d '{"chunk_initial_words":7,"chunk_steady_words":18,"edge_base_rate_pct":6}'
 ```
 
 Reset:
 ```powershell
-curl -X POST http://127.0.0.1:8003/settings/reset
+curl -X POST http://127.0.0.1:8003/api/v1/voice/settings/reset
 ```
 
 ## Useful commands

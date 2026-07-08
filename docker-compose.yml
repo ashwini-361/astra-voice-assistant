@@ -24,6 +24,24 @@ services:
       start_period: 15s
     restart: unless-stopped
 
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: astra
+      POSTGRES_PASSWORD: astra
+      POSTGRES_DB: astra
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U astra -d astra"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    restart: unless-stopped
+
   whisper:
     build: *app-build
     command: uvicorn services.whisper_service:app --host 0.0.0.0 --port 8001
@@ -37,7 +55,7 @@ services:
     volumes:
       - whisper-hf-cache:/app/.hf_cache
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8001/api/v1/health"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -63,7 +81,7 @@ services:
       qdrant:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8002/api/v1/health"]
       interval: 10s
       timeout: 5s
       retries: 6
@@ -79,7 +97,7 @@ services:
     environment:
       AI_ASSISTANT_TTS_BACKEND: edge
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8003/api/v1/health"]
       interval: 10s
       timeout: 5s
       retries: 6
@@ -93,11 +111,41 @@ services:
       - "8004:8004"
     env_file: .env
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8004/api/v1/health"]
       interval: 10s
       timeout: 5s
       retries: 6
       start_period: 20s
+    restart: unless-stopped
+
+  migrate:
+    build: *app-build
+    command: alembic upgrade head
+    env_file: .env
+    environment:
+      AI_ASSISTANT_POSTGRES_DSN: postgresql+asyncpg://astra:astra@postgres:5432/astra
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles: ["tools"]
+
+  gateway:
+    build: *app-build
+    command: uvicorn services.gateway.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    env_file: .env
+    environment:
+      AI_ASSISTANT_POSTGRES_DSN: postgresql+asyncpg://astra:astra@postgres:5432/astra
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
     restart: unless-stopped
 
   seed:
@@ -120,6 +168,7 @@ services:
       AI_ASSISTANT_LLM_HOST: llm
       AI_ASSISTANT_TTS_HOST: tts
       AI_ASSISTANT_INTENT_HOST: intent
+      AI_ASSISTANT_GATEWAY_HOST: gateway
       AI_ASSISTANT_QDRANT_URL: http://qdrant:6333
       # orchestrator/pipeline.py's streaming/llm_streamer.py talks to
       # Ollama directly (bypassing the llm container's HTTP API), so this
@@ -138,8 +187,11 @@ services:
         condition: service_healthy
       qdrant:
         condition: service_healthy
+      gateway:
+        condition: service_healthy
     profiles: ["tools"]
 
 volumes:
   qdrant-data:
   whisper-hf-cache:
+  postgres-data:

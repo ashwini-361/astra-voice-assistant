@@ -692,7 +692,7 @@ def _apply_persona(prompt: str) -> str:
     return f"{persona}\n\nUser: {prompt}\nAssistant:"
 
 
-@app.post("/generate", response_model=GenerateResponse)
+@app.post("/api/v1/chat/completions", response_model=GenerateResponse)
 async def generate(request: GenerateRequest):
     start = time.perf_counter()
     request.prompt = _apply_persona(request.prompt)
@@ -736,7 +736,7 @@ async def generate(request: GenerateRequest):
     return GenerateResponse(provider=request_ctx.provider, model=request_ctx.model, response=text, request_id=request_id)
 
 
-@app.get("/providers")
+@app.get("/api/v1/chat/providers")
 async def providers():
     settings_obj = _load_effective_settings()
     return {
@@ -750,7 +750,7 @@ async def providers():
     }
 
 
-@app.get("/models")
+@app.get("/api/v1/chat/models")
 async def models(provider: Optional[str] = Query(default=None)):
     settings_obj = _load_effective_settings()
     if provider:
@@ -765,12 +765,12 @@ async def models(provider: Optional[str] = Query(default=None)):
     return {"active_provider": settings_obj.provider, "models": all_models}
 
 
-@app.get("/settings")
+@app.get("/api/v1/chat/settings")
 async def get_runtime_settings():
     return _load_effective_settings().model_dump()
 
 
-@app.post("/settings")
+@app.post("/api/v1/chat/settings")
 async def update_runtime_settings(update: SettingsUpdate):
     with _settings_lock:
         current = _runtime_settings.model_dump()
@@ -781,30 +781,30 @@ async def update_runtime_settings(update: SettingsUpdate):
     return {"status": "updated", "settings": updated.model_dump()}
 
 
-@app.post("/settings/reset")
+@app.post("/api/v1/chat/settings/reset")
 async def reset_runtime_settings():
     with _settings_lock:
         globals()["_runtime_settings"] = _default_runtime_settings()
     return {"status": "reset", "settings": _load_effective_settings().model_dump()}
 
 
-@app.post("/stop")
+@app.post("/api/v1/chat/stop")
 async def stop_all_streams():
     cancelled = stream_manager.stop_all()
     return {"status": "stopped", "cancelled_streams": cancelled}
 
 
-@app.get("/mcp/servers")
+@app.get("/api/v1/mcp/servers")
 async def list_mcp_servers():
     return list_servers()
 
 
-@app.post("/mcp/servers")
+@app.post("/api/v1/mcp/servers")
 async def register_mcp_server(config: MCPServerConfig):
     return upsert_server(config)
 
 
-@app.delete("/mcp/servers/{name}")
+@app.delete("/api/v1/mcp/servers/{name}")
 async def remove_mcp_server(name: str):
     return delete_server(name)
 
@@ -817,32 +817,32 @@ class ToolToggleRequest(PydanticBaseModel):
     server: str
 
 
-@app.patch("/mcp/servers/{name}/enabled")
+@app.patch("/api/v1/mcp/servers/{name}/enabled")
 async def update_mcp_server_enabled(name: str, request: MCPServerToggleRequest):
     return set_server_enabled(name, request.enabled)
 
 
-@app.get("/mcp/tools")
+@app.get("/api/v1/mcp/tools")
 async def list_mcp_tools(server: str):
     return list_tools(server)
 
 
-@app.post("/mcp/tools/call")
+@app.post("/api/v1/mcp/tools/call")
 async def call_mcp_tool(request: MCPToolCallRequest):
     return call_tool(request)
 
 
-@app.post("/mcp/browser/search")
+@app.post("/api/v1/mcp/browser/search")
 async def browser_search(request: BrowserSearchRequest):
     return tool_browser_search(query=request.query, limit=request.limit)
 
 
-@app.post("/mcp/files/search")
+@app.post("/api/v1/mcp/files/search")
 async def file_search(request: FileSearchRequest):
     return tool_file_search(query=request.query, limit=request.limit, base_path=request.path)
 
 
-@app.post("/mcp/music/control")
+@app.post("/api/v1/mcp/music/control")
 async def music_control(request: MusicControlRequest):
     return tool_music_control(request.action, request.value)
 
@@ -857,7 +857,7 @@ class DockerServerRegisterRequest(PydanticBaseModel):
     auto_start: bool = True
 
 
-@app.get("/mcp/docker/servers")
+@app.get("/api/v1/mcp/docker/servers")
 async def list_docker_servers():
     servers = []
     for server in mcp_bridge.list_servers():
@@ -867,7 +867,7 @@ async def list_docker_servers():
     return {"servers": servers}
 
 
-@app.post("/mcp/docker/servers")
+@app.post("/api/v1/mcp/docker/servers")
 async def register_docker_server(req: DockerServerRegisterRequest):
     result = mcp_bridge.register_server(
         name=req.name, command=req.command, args=req.args,
@@ -876,7 +876,7 @@ async def register_docker_server(req: DockerServerRegisterRequest):
     return result
 
 
-@app.delete("/mcp/docker/servers/{name}")
+@app.delete("/api/v1/mcp/docker/servers/{name}")
 async def remove_docker_server(name: str):
     ok = mcp_bridge.remove_server(name)
     if not ok:
@@ -884,17 +884,17 @@ async def remove_docker_server(name: str):
     return {"status": "deleted", "name": name}
 
 
-@app.post("/mcp/docker/servers/{name}/restart")
+@app.post("/api/v1/mcp/docker/servers/{name}/restart")
 async def restart_docker_server(name: str):
     return mcp_bridge.restart_server(name)
 
 
-@app.get("/mcp/docker/tools")
+@app.get("/api/v1/mcp/docker/tools")
 async def list_docker_tools():
     return {"tools": mcp_bridge.list_all_tools()}
 
 
-@app.get("/mcp/catalog")
+@app.get("/api/v1/mcp/catalog")
 async def mcp_catalog():
     tools, unavailable = _build_tool_specs()
     return {
@@ -907,17 +907,17 @@ async def mcp_catalog():
     }
 
 
-@app.post("/mcp/docker/tools/call")
+@app.post("/api/v1/mcp/docker/tools/call")
 async def call_docker_tool(request: MCPToolCallRequest):
     return mcp_bridge.call_tool(request.server, request.tool, request.arguments)
 
 
-@app.post("/mcp/docker/call")
+@app.post("/api/v1/mcp/docker/call")
 async def call_docker_tool_alias(request: MCPToolCallRequest):
     return mcp_bridge.call_tool(request.server, request.tool, request.arguments)
 
 
-@app.post("/tools/toggle")
+@app.post("/api/v1/tools/toggle")
 async def toggle_tool(request: ToolToggleRequest):
     server = request.server
     with _tools_lock:
@@ -927,7 +927,7 @@ async def toggle_tool(request: ToolToggleRequest):
     return {"status": "ok", "server": server, "enabled": enabled}
 
 
-@app.post("/agent/loop")
+@app.post("/api/v1/agent/loop")
 async def agent_loop(request: AgentLoopRequest):
     start = time.perf_counter()
     settings_obj = _load_effective_settings(request.model_dump(exclude_none=True))
@@ -974,12 +974,12 @@ async def agent_loop(request: AgentLoopRequest):
         raise _agent_error("Agent loop failed", trace=[], status_code=502) from exc
 
 
-@app.get("/metrics")
+@app.get("/api/v1/chat/metrics")
 async def metrics():
     return llm_metrics.snapshot()
 
 
-@app.get("/health")
+@app.get("/api/v1/health")
 async def health():
     settings_obj = _load_effective_settings()
     backend_ready = provider_health(settings_obj)

@@ -10,7 +10,7 @@ import requests
 
 def main() -> None:
     response = requests.post(
-        "http://127.0.0.1:8003/speak",
+        "http://127.0.0.1:8003/api/v1/voice/playback",
         json={"text": "Hello, this is a test.", "chunk_id": 0, "generation_id": 999},
         timeout=10,
     )

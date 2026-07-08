@@ -149,7 +149,7 @@ async def _transcribe_file(temp_path: str):
     }
 
 
-@app.post("/transcribe", response_model=TranscriptionResponse)
+@app.post("/api/v1/voice/transcriptions", response_model=TranscriptionResponse)
 async def transcribe(audio_file: UploadFile = File(...)) -> JSONResponse:
     if audio_file.content_type and not audio_file.content_type.startswith("audio"):
         raise HTTPException(status_code=400, detail="Invalid file type")
@@ -172,7 +172,7 @@ async def transcribe(audio_file: UploadFile = File(...)) -> JSONResponse:
             logger.warning("Temporary audio file cleanup failed", exc_info=True)
 
 
-@app.get("/health")
+@app.get("/api/v1/health")
 async def health():
     """Health check endpoint"""
     return {"status": "ok", "service": "whisper"}

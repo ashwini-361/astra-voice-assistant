@@ -130,7 +130,7 @@ def run_speech_recognition_check():
     print("⏳ Transcribing with Whisper...")
     try:
         response = requests.post(
-            "http://127.0.0.1:8001/transcribe",
+            "http://127.0.0.1:8001/api/v1/voice/transcriptions",
             files={"audio_file": ("speech.wav", wav_bytes, "audio/wav")},
             timeout=30,
         )

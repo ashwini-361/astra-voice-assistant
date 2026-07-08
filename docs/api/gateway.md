@@ -61,11 +61,18 @@ No auth required. Response: `{"status": "ok", "service": "gateway"}`.
 
 ## What the gateway explicitly does NOT do
 
-- Does not forward/proxy `/transcribe`, `/generate`, `/speak`,
-  `/synthesize`, `/classify`, `/agent/loop`, or any other data-plane
-  route — the frontend calls whisper/llm/tts/intent directly.
+- Does not forward/proxy `/api/v1/voice/*`, `/api/v1/chat/*`,
+  `/api/v1/agent/loop`, or any other data-plane route — the frontend
+  calls whisper/llm/tts/intent directly.
 - Does not perform quota or rate-limit enforcement itself (PR3 puts that
   in each service, built on the shared JWT-derived `user_id` — see
   `docs/api/memory.md` and the Phase C plan's PR3 section).
+- **Is not managed by the native dev tools.** `services/dev_manager.py`
+  and `start_stack.ps1` still only supervise whisper/llm/tts/intent — the
+  gateway (and Postgres) are Docker-Compose-only in Phase C, consistent
+  with ADR-006's canonical-startup-path decision. Running native dev mode
+  (`start_stack.ps1`, with or without `-UseDevManager`) will never bring
+  up the gateway; `curl http://127.0.0.1:8000/api/v1/health` will always
+  connection-refuse in that mode — this is expected, not a regression.
 - Does not maintain server-side session state (no `sessions` table, no
   Redis session store) — JWTs are self-contained and stateless.

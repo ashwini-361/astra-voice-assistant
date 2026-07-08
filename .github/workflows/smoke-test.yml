@@ -60,6 +60,11 @@ jobs:
       - name: Build images
         run: docker compose build
 
+      - name: Run Postgres migrations
+        run: |
+          docker compose up -d --wait postgres
+          docker compose --profile tools run --rm migrate
+
       - name: Start stack and wait for all services healthy
         run: docker compose up -d --wait --wait-timeout 300
 

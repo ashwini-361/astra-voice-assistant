@@ -1,4 +1,4 @@
-.PHONY: env up up-gpu down logs seed smoke lint clean
+.PHONY: env migrate up up-gpu down logs seed smoke lint clean
 
 # Windows: `make` isn't installed by default. Install via `choco install make`
 # or `scoop install make`, or use Git Bash with MSYS2's make package. If you
@@ -8,11 +8,15 @@
 env: ## One-time: create .env from .env.example if it doesn't exist yet
 	@test -f .env || cp .env.example .env
 
-up: env ## Start the full stack (whisper, llm, tts, intent, qdrant), wait for healthy
+migrate: env ## Apply Postgres migrations (one-off job, run before `up` brings the gateway up)
+	docker compose up -d --wait postgres
+	docker compose --profile tools run --rm migrate
+
+up: migrate ## Start the full stack (whisper, llm, tts, intent, qdrant, postgres, gateway), wait for healthy
 	docker compose up -d --wait
 	docker compose ps
 
-up-gpu: env ## Start with GPU passthrough for whisper (requires NVIDIA + nvidia-container-toolkit)
+up-gpu: migrate ## Start with GPU passthrough for whisper (requires NVIDIA + nvidia-container-toolkit)
 	docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --wait
 	docker compose ps
 

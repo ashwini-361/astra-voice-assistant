@@ -2,10 +2,10 @@ const API_BASE = import.meta.env.VITE_TTS_API_BASE ?? 'http://127.0.0.1:8003';
 
 /**
  * Synthesize speech and return audio blob for browser playback.
- * Calls /synthesize which returns raw audio/mpeg bytes.
+ * Calls /api/v1/voice/speech which returns raw audio/mpeg bytes.
  */
 export const synthesizeAudio = async (text: string, emotion?: string): Promise<Blob> => {
-  const response = await fetch(`${API_BASE}/synthesize`, {
+  const response = await fetch(`${API_BASE}/api/v1/voice/speech`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text, emotion }),
@@ -18,5 +18,5 @@ export const synthesizeAudio = async (text: string, emotion?: string): Promise<B
  * Stop server-side TTS playback (used by duplex mode).
  */
 export const stopTTS = async (): Promise<void> => {
-  await fetch(`${API_BASE}/stop`, { method: 'POST' }).catch(() => {});
+  await fetch(`${API_BASE}/api/v1/voice/playback/stop`, { method: 'POST' }).catch(() => {});
 };

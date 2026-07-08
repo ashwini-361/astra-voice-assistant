@@ -3,16 +3,17 @@
 Run via: docker compose --profile tools run --rm smoke-test (or `make smoke`).
 
 Two stages:
-  1. Poll every service's /health endpoint (fail fast, name which one is down).
+  1. Poll every service's /api/v1/health endpoint (fail fast, name which
+     one is down).
   2. Drive intent -> LLM -> TTS as three direct HTTP calls, mirroring exactly
      what the frontend does (see frontend/src/core/api/{intent,llm,tts}.ts) —
-     NOT via orchestrator.pipeline.run_pipeline(), which calls TTS's /speak
-     endpoint. /speak decodes and plays audio on the *server* via
-     miniaudio/sounddevice for the native single-machine CLI/duplex flow;
-     those packages are deliberately excluded from the container image
-     (see requirements-container.txt), so /speak always fails headless.
-     /synthesize (used here) just returns audio bytes for the caller to
-     play — the actual hosted-web-service path.
+     NOT via orchestrator.pipeline.run_pipeline(), which calls TTS's
+     /api/v1/voice/playback endpoint. That endpoint decodes and plays audio
+     on the *server* via miniaudio/sounddevice for the native single-machine
+     CLI/duplex flow; those packages are deliberately excluded from the
+     container image (see requirements-container.txt), so it always fails
+     headless. /api/v1/voice/speech (used here) just returns audio bytes for
+     the caller to play — the actual hosted-web-service path.
 
 Exits 0 on success, 1 on any failure with a clear message about what failed.
 """
@@ -41,11 +42,12 @@ def _base_urls() -> dict[str, str]:
         "llm": f"http://{resolve_host(settings.llm_host)}:{settings.llm_port}",
         "tts": f"http://{resolve_host(settings.tts_host)}:{settings.tts_port}",
         "intent": f"http://{resolve_host(settings.intent_host)}:{settings.intent_port}",
+        "gateway": f"http://{resolve_host(settings.gateway_host)}:{settings.gateway_port}",
     }
 
 
 async def _check_health(name: str, base_url: str) -> bool:
-    url = f"{base_url}/health"
+    url = f"{base_url}/api/v1/health"
     for attempt in range(1, HEALTH_RETRIES + 1):
         try:
             async with httpx.AsyncClient(timeout=HEALTH_TIMEOUT_SEC) as client:
@@ -71,7 +73,7 @@ async def _run_pipeline_stage(urls: dict[str, str]) -> bool:
 
     async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT_SEC) as client:
         start = time.perf_counter()
-        intent_resp = await client.post(f"{urls['intent']}/classify", json={"text": text})
+        intent_resp = await client.post(f"{urls['intent']}/api/v1/voice/intents", json={"text": text})
         timings["intent_ms"] = (time.perf_counter() - start) * 1000
         if intent_resp.status_code != 200:
             logger.error("[intent] FAILED: status=%s body=%s", intent_resp.status_code, intent_resp.text)
@@ -80,7 +82,7 @@ async def _run_pipeline_stage(urls: dict[str, str]) -> bool:
         logger.info("[intent] label=%s provider=%s (%.0fms)", intent_data.get("label"), intent_data.get("provider"), timings["intent_ms"])
 
         start = time.perf_counter()
-        llm_resp = await client.post(f"{urls['llm']}/generate", json={"prompt": text, "stream": False})
+        llm_resp = await client.post(f"{urls['llm']}/api/v1/chat/completions", json={"prompt": text, "stream": False})
         timings["llm_ms"] = (time.perf_counter() - start) * 1000
         if llm_resp.status_code != 200:
             logger.error("[llm] FAILED: status=%s body=%s", llm_resp.status_code, llm_resp.text)
@@ -93,7 +95,7 @@ async def _run_pipeline_stage(urls: dict[str, str]) -> bool:
             return False
 
         start = time.perf_counter()
-        tts_resp = await client.post(f"{urls['tts']}/synthesize", json={"text": assistant_text})
+        tts_resp = await client.post(f"{urls['tts']}/api/v1/voice/speech", json={"text": assistant_text})
         timings["tts_ms"] = (time.perf_counter() - start) * 1000
         if tts_resp.status_code != 200:
             logger.error("[tts] FAILED: status=%s body=%s", tts_resp.status_code, tts_resp.text)

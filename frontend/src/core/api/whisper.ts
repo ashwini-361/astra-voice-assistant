@@ -8,7 +8,7 @@ export const transcribeAudio = async (audioBlob: Blob): Promise<string> => {
   const formData = new FormData();
   formData.append('audio_file', audioBlob, 'audio.webm');
   
-  const response = await fetch(`${API_BASE}/transcribe`, {
+  const response = await fetch(`${API_BASE}/api/v1/voice/transcriptions`, {
     method: 'POST',
     body: formData,
   });

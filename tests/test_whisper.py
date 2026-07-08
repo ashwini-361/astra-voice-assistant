@@ -43,7 +43,7 @@ def test_transcribe(monkeypatch):
     with TestClient(whisper_service.app) as client:
         start = time.perf_counter()
         response = client.post(
-            "/transcribe",
+            "/api/v1/voice/transcriptions",
             files={"audio_file": ("test.wav", _silent_wav_bytes(), "audio/wav")},
         )
         latency = time.perf_counter() - start

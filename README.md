@@ -34,10 +34,10 @@ Consumer laptops now have enough GPU/CPU throughput for practical on-device assi
 - `duplex/` - interrupt and stream management
 
 ## TTS runtime control API
-- `GET /settings`
-- `POST /settings`
-- `POST /settings/reset`
-- `GET /streaming-config`
+- `GET /api/v1/voice/settings`
+- `POST /api/v1/voice/settings`
+- `POST /api/v1/voice/settings/reset`
+- `GET /api/v1/voice/streaming-config`
 
 Important tunables:
 - `edge_base_rate_pct`
@@ -66,10 +66,10 @@ Model cache behavior:
 ```powershell
 .\setup.ps1
 .\start_stack.ps1 -ServicesOnly
-curl http://127.0.0.1:8001/health
-curl http://127.0.0.1:8002/health
-curl http://127.0.0.1:8003/health
-curl http://127.0.0.1:8004/health
+curl http://127.0.0.1:8001/api/v1/health
+curl http://127.0.0.1:8002/api/v1/health
+curl http://127.0.0.1:8003/api/v1/health
+curl http://127.0.0.1:8004/api/v1/health
 .\start_stack.ps1
 ```
 
@@ -87,19 +87,22 @@ ollama serve                # Ollama stays native — see "Architecture" below
 ollama pull qwen2.5:3b      # small local model .env.example is validated against
 make up                     # or: make up-gpu   (GPU passthrough for whisper)
                             # creates .env from .env.example on first run,
-                            # then waits for all 5 services to be healthy
+                            # runs Postgres migrations (make migrate), then
+                            # waits for all 7 services to be healthy
 make seed
 make smoke
 ```
 `make up` copies `.env.example` to `.env` automatically if `.env` doesn't
-exist yet (see the `env` Makefile target) — no manual copy step needed.
-`make smoke` calls `/classify`, `/generate`, and `/synthesize` directly —
-the same endpoints the frontend uses (not `orchestrator/pipeline.py`'s
-`/speak`, which decodes+plays audio server-side via miniaudio/sounddevice,
-deliberately excluded from the container image — a local-machine CLI
-feature, not applicable to a hosted service). Expected output: all 4
-service health checks pass, a real intent label, a real Astra-persona LLM
-response, real synthesized audio bytes, per-stage timings, exit code 0.
+exist yet (see the `env` Makefile target), and applies Postgres migrations
+automatically (see the `migrate` Makefile target) — no manual steps needed.
+`make smoke` calls `/api/v1/voice/intents`, `/api/v1/chat/completions`, and
+`/api/v1/voice/speech` directly — the same endpoints the frontend uses (not
+`orchestrator/pipeline.py`'s `/api/v1/voice/playback`, which decodes+plays
+audio server-side via miniaudio/sounddevice, deliberately excluded from the
+container image — a local-machine CLI feature, not applicable to a hosted
+service). Expected output: all 5 core-service health checks pass (plus
+Postgres/gateway), a real intent label, a real Astra-persona LLM response,
+real synthesized audio bytes, per-stage timings, exit code 0.
 
 `make lint` runs ruff + black --check + pytest (installs `ruff`/`black`
 into `venv` on first run via `requirements-dev.txt`).
@@ -107,23 +110,25 @@ into `venv` on first run via `requirements-dev.txt`).
 Other targets: `make down`, `make logs`, `make clean` (also removes the
 Qdrant volume and whisper's HF model cache volume).
 
-### Architecture (current, W-1 scope — no gateway yet)
+### Architecture (Phase C — multi-user foundation in progress, see docs/adr/ADR-007-multiuser-pivot.md)
 ```
 Frontend (native, npm run dev)
-    |-- POST /transcribe        --> Whisper  (STT, container)
-    |-- POST /generate,/agent/loop --> LLM   (container) --> Ollama (native host, NOT containerized)
-    |-- POST /synthesize        --> TTS      (container) --> edge-tts (outbound HTTPS)
-    |-- POST /classify          --> Intent   (container, CPU-only onnxruntime)
+    |-- POST /api/v1/voice/transcriptions        --> Whisper  (STT, container)
+    |-- POST /api/v1/chat/completions,/api/v1/agent/loop --> LLM (container) --> Ollama (native host, NOT containerized)
+    |-- POST /api/v1/voice/speech                --> TTS      (container) --> edge-tts (outbound HTTPS)
+    |-- POST /api/v1/voice/intents                --> Intent   (container, CPU-only onnxruntime)
+    |-- (login/refresh only) --> Gateway (container; auth-only, NOT a data-plane proxy)
                                        |
                                        v
                                    Qdrant (container; memory/vector_store.py)
+                                   Postgres (container; db/ -- no tables yet, PR1A infra only)
 ```
 
 ### Deliberately deferred from this compose stack
-- **Postgres/Redis**: not included. Nothing in the codebase references any
-  ORM/session/user concept yet — that arrives in Phase W3 (auth) of the web
-  service plan, where a real schema will exist to seed. Empty containers
-  today would be pure maintenance risk with no consumer.
+- **Redis**: not included yet. Lands in a later Phase C PR alongside quotas/
+  rate limiting. Postgres (above) is now included as of Phase C PR1A —
+  infra only, no tables yet (`users`/`conversations`/`usage_counters` land
+  in subsequent PRs via Alembic, see `db/migrations/`).
 - **Ollama**: stays native/external, reached via
   `http://host.docker.internal:11434`, rather than containerized — avoids
   re-doing cloud sign-in / model pulls inside a container and duplicated

@@ -30,7 +30,7 @@ class ServiceConfig:
 
     @property
     def health_url(self) -> str:
-        return f"http://127.0.0.1:{self.port}/health"
+        return f"http://127.0.0.1:{self.port}/api/v1/health"
 
     @property
     def command(self) -> list[str]:
@@ -54,6 +54,9 @@ class ServiceManager:
         self._bootstrap_thread: threading.Thread | None = None
 
         settings = get_settings()
+        # Deliberately excludes the gateway (and Postgres): Phase C keeps
+        # them Docker-Compose-only, per ADR-006's canonical-startup-path
+        # decision -- see docs/api/gateway.md. Not an oversight.
         self._configs: dict[str, ServiceConfig] = {
             "whisper": ServiceConfig("whisper", "services.whisper_service", settings.whisper_port, 180),
             "llm": ServiceConfig("llm", "services.llm_service", settings.llm_port, 180),

@@ -50,7 +50,7 @@ def _looks_like_sentence_end(text: str) -> bool:
 async def _fetch_chunk_profile(client: httpx.AsyncClient) -> ChunkProfile:
     url = _tts_url()
     try:
-        resp = await client.get(f"{url}/streaming-config", timeout=2.0)
+        resp = await client.get(f"{url}/api/v1/voice/streaming-config", timeout=2.0)
         resp.raise_for_status()
         data = resp.json()
         return ChunkProfile(
@@ -92,7 +92,7 @@ async def _send_tts_segment(
             logger.debug("[tts-stream] gen=%d stale after lock - dropping segment", generation_id)
             return
         try:
-            resp = await client.post(f"{url}/speak", json=payload, timeout=30.0)
+            resp = await client.post(f"{url}/api/v1/voice/playback", json=payload, timeout=30.0)
             logger.info(
                 "[tts-stream] gen=%d chunk=%d sent segment (%d chars, words=%d, emotion=%s) -> %s",
                 generation_id,

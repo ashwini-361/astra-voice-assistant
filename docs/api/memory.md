@@ -1,18 +1,23 @@
 # Memory & LLM API contract (llm_service core routes + per-user isolation design)
 
 Written before Phase C implementation per ADR-007. Covers
-`services/llm_service.py`'s core-generation routes (the ADR-006 frozen
-subset — `/mcp/*`/`/agent/loop`'s *behavior* stays excluded from the
-freeze per ADR-006, but they still gain the `/api/v1/` prefix and auth
-dependency like every other route) and the per-user memory design PR2
-implements.
+`services/llm_service.py`'s core-generation routes under the new
+`/api/v1/chat/*` and `/api/v1/agent/*` resource naming (see
+`docs/api/README.md`'s "Naming conventions" section) — the ADR-006
+frozen subset for `chat`; `agent` stays excluded from the freeze per
+ADR-006/ADR-007, but still gains the new path and auth dependency like
+every other route — and the per-user memory design PR2 implements.
+
+**Split across PR1A/PR1B:** the path rename happens in PR1A (no auth
+enforced yet). `Depends(get_current_user_id)` is added in PR1B.
 
 ## LLM core routes (`services/llm_service.py`, port 8002)
 
-All require `Authorization: Bearer <access_jwt>` except `/api/v1/health`.
+All require `Authorization: Bearer <access_jwt>` (from PR1B on) except
+`/api/v1/health`.
 
-### `POST /api/v1/generate`
-Request (`GenerateRequest`):
+### `POST /api/v1/chat/completions`
+*(was `/generate`)* Request (`GenerateRequest`):
 ```json
 {"prompt": "string", "provider": "ollama|lmstudio|openai|custom|null", "model": "string|null", "stream": "bool|null", "temperature": "float|null", "max_tokens": "int|null", "top_p": "float|null", "stop": ["string"], "voice_mode": "bool|null"}
 ```
@@ -23,22 +28,36 @@ Stream mode: NDJSON, unchanged from today.
 (`docs/api/auth.md`), not a request field — never accept `user_id` as
 client-supplied input, always derive it from the verified JWT server-side.
 
-### `GET /api/v1/providers`, `GET /api/v1/models`, `GET/POST /api/v1/settings`, `POST /api/v1/settings/reset`, `POST /api/v1/stop`
-Unchanged shape from today, gain the prefix + auth requirement.
+### `GET /api/v1/chat/providers`, `GET /api/v1/chat/models`, `GET/POST /api/v1/chat/settings`, `POST /api/v1/chat/settings/reset`, `POST /api/v1/chat/stop`
+*(was `/providers`, `/models`, `/settings`, `/settings/reset`, `/stop`)*
+Unchanged shape from today, gain the new path + auth requirement.
 
 ### `POST /api/v1/agent/loop`
+*(unchanged path — kept as its own resource domain, not nested under
+`chat`, since it's a distinct capability and still excluded from
+ADR-006's freeze; not worth over-designing a name for a surface that may
+get reshaped in the agent roadmap anyway)*
 Request (`AgentLoopRequest`): `{"prompt": "string", "max_steps": int}`.
 Response: `{"status": "string", "steps": [...], "response": "string"}`.
-Behavior/known issues unchanged (still excluded from ADR-006's freeze,
-per ADR-007 — this route just gains the path prefix and auth like
-everything else). `user_id` from the JWT is threaded down through
-`control_plane.py` → `agent_memory.py` (see below) — this is the one
-`/mcp/*`-adjacent change that's actually required by Phase C, since the
-agent loop touches per-user memory.
+Behavior/known issues unchanged. `user_id` from the JWT is threaded down
+through `control_plane.py` → `agent_memory.py` (see below) — this is the
+one `/mcp/*`-adjacent change that's actually required by Phase C, since
+the agent loop touches per-user memory.
 
-### `GET /api/v1/metrics`, `GET /api/v1/health`
-`/health` unauthenticated (Compose healthchecks); `/metrics` requires
-auth.
+### `GET /api/v1/chat/metrics`, `GET /api/v1/health`
+*(was `/metrics`, `/health`)* `/health` unauthenticated (Compose
+healthchecks); `/api/v1/chat/metrics` requires auth.
+
+## MCP/tool-registry routes (`/api/v1/mcp/*`, `/api/v1/tools/toggle`)
+
+Bulk-prefixed only (`/mcp/... → /api/v1/mcp/...`), not individually
+renamed — this is exactly the surface ADR-006/ADR-007 exclude from the
+freeze (duplicate `/mcp/docker/call` alias, 3 overlapping tool
+registries, known logic bugs per `docs/backlog.md`). Not worth designing
+a resource-noun scheme for a surface that's still consolidating and may
+be reshaped entirely during the agent roadmap (Phase W5/W6). Gains
+`Depends(get_current_user_id)` in PR1B like everything else, for
+consistent quota/rate-limit accounting — no other behavior change.
 
 ## Per-user memory design (`memory/vector_store.py`, `memory/memory_manager.py`)
 
