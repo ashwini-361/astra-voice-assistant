@@ -121,21 +121,23 @@ Frontend (native, npm run dev)
                                        |
                                        v
                                    Qdrant (container; memory/vector_store.py)
-                                   Postgres (container; db/ -- no tables yet, PR1A infra only)
+                                   Postgres (container; db/ -- users/conversations/usage_counters,
+                                             see db/migrations/)
+                                   Redis (container; core/cache.py -- generic wrapper, rate
+                                          limiting is one consumer via core/rate_limit.py)
 ```
 
 ### Deliberately deferred from this compose stack
-- **Redis**: not included yet. Lands in a later Phase C PR alongside quotas/
-  rate limiting. Postgres (above) is now included as of Phase C PR1A —
-  infra only, no tables yet (`users`/`conversations`/`usage_counters` land
-  in subsequent PRs via Alembic, see `db/migrations/`).
 - **Ollama**: stays native/external, reached via
   `http://host.docker.internal:11434`, rather than containerized — avoids
   re-doing cloud sign-in / model pulls inside a container and duplicated
   model caches. Revisit when deploying to a dedicated GPU server with no
   pre-existing native Ollama setup to preserve.
-- **User seeding**: `make seed` seeds sample Qdrant memories, not a
-  database/user record — there's no user table yet (Phase W3).
+- **User seeding**: `make seed` seeds sample memories (Postgres
+  `conversations` + Qdrant) under the reserved local/service user
+  (`core.auth.LOCAL_USER_ID`); that row itself is guaranteed to already
+  exist by `make migrate`'s data migration, not by `make seed` — see
+  `docs/api/auth.md`.
 
 ### Version requirements (containerized path)
 | Component | Version used/tested |

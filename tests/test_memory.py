@@ -49,7 +49,7 @@ def test_memory_retrieval(monkeypatch):
     monkeypatch.setattr(memory_manager, "VectorStore", _FakeStore)
     monkeypatch.setattr(memory_manager, "Conversation", _FakeRow)
     monkeypatch.setattr(memory_manager, "Session", _FakeSession)
-    monkeypatch.setattr(memory_manager, "_get_sync_engine", lambda: None)
+    monkeypatch.setattr(memory_manager, "get_sync_engine", lambda: None)
 
     manager = memory_manager.MemoryManager()
     manager.add_interaction("user likes pizza", "assistant suggests toppings", user_id="user-a")
@@ -67,7 +67,7 @@ def test_memory_isolation_between_users(monkeypatch):
     monkeypatch.setattr(memory_manager, "VectorStore", _FakeStore)
     monkeypatch.setattr(memory_manager, "Conversation", _FakeRow)
     monkeypatch.setattr(memory_manager, "Session", _FakeSession)
-    monkeypatch.setattr(memory_manager, "_get_sync_engine", lambda: None)
+    monkeypatch.setattr(memory_manager, "get_sync_engine", lambda: None)
 
     manager = memory_manager.MemoryManager()
     manager.add_interaction("account A secret", "account A response", user_id="user-a")

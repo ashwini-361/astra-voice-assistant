@@ -4,10 +4,10 @@ import wave
 
 from fastapi.testclient import TestClient
 
-from core.auth import get_current_user_id
+from core.rate_limit import rate_limited_user_id
 from services import whisper_service
 
-whisper_service.app.dependency_overrides[get_current_user_id] = lambda: "00000000-0000-0000-0000-000000000000"
+whisper_service.app.dependency_overrides[rate_limited_user_id] = lambda: "00000000-0000-0000-0000-000000000000"
 
 
 class _FakeSegment:

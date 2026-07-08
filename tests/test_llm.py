@@ -4,14 +4,20 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-from core.auth import get_current_user_id
+from core.quota import check_and_increment_quota
+from core.rate_limit import rate_limited_user_id
 from services import llm_service
 from services.llm_models import MCPToolCallRequest
 
-# Auth is enforced on every route except /health (PR1B) -- override the
-# shared dependency for tests, which exercise routing/business logic, not
-# the auth layer itself (that's core/auth.py's own concern).
-llm_service.app.dependency_overrides[get_current_user_id] = lambda: "00000000-0000-0000-0000-000000000000"
+# Auth+rate-limiting+quota is enforced on every route except /health
+# (PR1B/PR3) -- override the shared dependencies for tests, which
+# exercise routing/business logic, not the auth/rate-limit/quota layer
+# itself (that's core/auth.py's, core/rate_limit.py's, and
+# core/quota.py's own concern -- the latter also avoids unit tests
+# needing a real Postgres connection for /api/v1/chat/completions and
+# /api/v1/agent/loop specifically).
+llm_service.app.dependency_overrides[rate_limited_user_id] = lambda: "00000000-0000-0000-0000-000000000000"
+llm_service.app.dependency_overrides[check_and_increment_quota] = lambda: "00000000-0000-0000-0000-000000000000"
 
 
 class _DummyResponse:

@@ -15,12 +15,13 @@ from sqlalchemy.orm import Session
 
 from core.config import get_settings
 from db.models import Conversation, User
-from memory.memory_manager import MemoryManager, _get_sync_engine
+from db.session import get_sync_engine
+from memory.memory_manager import MemoryManager
 
 
 def _live_postgres_and_qdrant_available() -> bool:
     try:
-        engine = _get_sync_engine()
+        engine = get_sync_engine()
         with engine.connect():
             pass
     except Exception:  # pylint: disable=broad-except
@@ -42,7 +43,7 @@ pytestmark = pytest.mark.skipif(
 @pytest.fixture
 def two_users():
     """Create two throwaway users for isolation testing, clean up after."""
-    engine = _get_sync_engine()
+    engine = get_sync_engine()
     user_a_id = uuid.uuid4()
     user_b_id = uuid.uuid4()
     with Session(engine) as session:
@@ -81,7 +82,7 @@ def test_postgres_conversations_does_not_leak_across_users(two_users):
     manager.add_interaction("account A turn", "Account A's private reply", user_id=user_a)
     manager.add_interaction("account B turn", "Account B's private reply", user_id=user_b)
 
-    engine = _get_sync_engine()
+    engine = get_sync_engine()
     with Session(engine) as session:
         rows_a = session.execute(select(Conversation).where(Conversation.user_id == user_a)).scalars().all()
         rows_b = session.execute(select(Conversation).where(Conversation.user_id == user_b)).scalars().all()
@@ -102,7 +103,7 @@ def test_qdrant_point_deleted_postgres_still_has_authoritative_content(two_users
     manager = MemoryManager()
     manager.add_interaction("source of truth check", "This must survive a Qdrant point deletion", user_id=user_a)
 
-    engine = _get_sync_engine()
+    engine = get_sync_engine()
     with Session(engine) as session:
         row = session.execute(
             select(Conversation).where(Conversation.user_id == user_a, Conversation.role == "assistant")

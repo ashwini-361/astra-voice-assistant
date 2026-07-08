@@ -42,6 +42,20 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 5s
+    restart: unless-stopped
+
   whisper:
     build: *app-build
     command: uvicorn services.whisper_service:app --host 0.0.0.0 --port 8001
@@ -52,8 +66,12 @@ services:
       AI_ASSISTANT_WHISPER_MODEL_NAME: small
       HF_HOME: /app/.hf_cache
       HUGGINGFACE_HUB_CACHE: /app/.hf_cache/hub
+      AI_ASSISTANT_REDIS_URL: redis://redis:6379/0
     volumes:
       - whisper-hf-cache:/app/.hf_cache
+    depends_on:
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/api/v1/health"]
       interval: 10s
@@ -73,12 +91,18 @@ services:
       # not part of this compose stack. Reachable via host.docker.internal.
       AI_ASSISTANT_OLLAMA_API_URL: http://host.docker.internal:11434
       AI_ASSISTANT_QDRANT_URL: http://qdrant:6333
+      AI_ASSISTANT_POSTGRES_DSN: postgresql+asyncpg://astra:astra@postgres:5432/astra
+      AI_ASSISTANT_REDIS_URL: redis://redis:6379/0
     extra_hosts:
       # Docker Desktop (Windows/Mac) resolves this automatically; harmless
       # there. Required on Linux Docker Engine.
       - "host.docker.internal:host-gateway"
     depends_on:
       qdrant:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8002/api/v1/health"]
@@ -96,6 +120,10 @@ services:
     env_file: .env
     environment:
       AI_ASSISTANT_TTS_BACKEND: edge
+      AI_ASSISTANT_REDIS_URL: redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8003/api/v1/health"]
       interval: 10s
@@ -110,6 +138,11 @@ services:
     ports:
       - "8004:8004"
     env_file: .env
+    environment:
+      AI_ASSISTANT_REDIS_URL: redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8004/api/v1/health"]
       interval: 10s
@@ -198,3 +231,4 @@ volumes:
   qdrant-data:
   whisper-hf-cache:
   postgres-data:
+  redis-data:

@@ -10,8 +10,9 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.auth import create_access_token, create_refresh_token, decode_token, get_current_user_id
+from core.auth import create_access_token, create_refresh_token, decode_token
 from core.config import get_settings
+from core.rate_limit import rate_limited_user_id
 from db.models import User
 from db.session import get_db
 from services.gateway.oauth import fetch_profile, oauth
@@ -114,7 +115,7 @@ async def logout():
 
 
 @router.get("/me", response_model=UserProfile)
-async def me(user_id: str = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
+async def me(user_id: str = Depends(rate_limited_user_id), db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if user is None:

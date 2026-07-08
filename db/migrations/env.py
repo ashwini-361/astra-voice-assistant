@@ -1,17 +1,19 @@
 """Alembic environment.
 
-Runs migrations synchronously via psycopg2, derived from the app's
-async (asyncpg) DSN in core.config.Settings -- the app itself uses the
-async engine (db/session.py) for request-time access; Alembic only
-needs a sync connection to apply DDL.
+Runs migrations synchronously via psycopg2 -- the app itself uses the
+async engine (db/session.py's get_engine/get_sessionmaker) for
+request-time access; Alembic only needs a sync connection to apply DDL.
+Online mode reuses db/session.py's get_sync_engine() (the same one
+memory/memory_manager.py and core/quota.py use) rather than constructing
+a second, independently-configured sync engine.
 """
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import engine_from_config, pool
 
 from core.config import get_settings
 from db.models import Base
+from db.session import get_sync_engine
 
 config = context.config
 
@@ -21,13 +23,12 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 
-def _sync_dsn() -> str:
-    return get_settings().postgres_dsn.replace("+asyncpg", "+psycopg2")
-
-
 def run_migrations_offline() -> None:
+    # Offline mode emits literal SQL without a live connection, so it
+    # needs a URL string rather than get_sync_engine()'s Engine object.
+    dsn = get_settings().postgres_dsn.replace("+asyncpg", "+psycopg2")
     context.configure(
-        url=_sync_dsn(),
+        url=dsn,
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
@@ -37,11 +38,7 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    configuration = config.get_section(config.config_ini_section) or {}
-    configuration["sqlalchemy.url"] = _sync_dsn()
-    connectable = engine_from_config(
-        configuration, prefix="sqlalchemy.", poolclass=pool.NullPool
-    )
+    connectable = get_sync_engine()
     with connectable.connect() as connection:
         context.configure(connection=connection, target_metadata=target_metadata)
         with context.begin_transaction():

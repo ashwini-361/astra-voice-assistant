@@ -119,8 +119,16 @@ health checks; no OAuth/JWT/users yet. (1B) authentication — OAuth,
 JWT, `/api/v1/auth/*`, `/api/v1/auth/me`, the `users` table. (2) per-user
 Qdrant isolation + Postgres-sourced conversation history (Postgres is the
 source of truth, Qdrant a derived index). (3) quotas + rate limiting +
-structured logging. AWS deployment is a separate, later **Phase D**, not
-covered here.
+structured logging — Redis-backed per-user rate limiting
+(`core/rate_limit.py`, generic `core/cache.py` wrapper, not a
+rate-limit-only client per ADR-007) applied to every authenticated
+route; a monthly (not daily — simpler given the `(user_id, period)`
+schema) request+token quota (`core/quota.py`, `usage_counters` table)
+enforced on the LLM's generation routes specifically
+(`/api/v1/chat/completions`, `/api/v1/agent/loop`); `request_id`
+threaded through the voice loop's per-stage structured log lines for
+log-aggregation correlation. AWS deployment is a separate, later
+**Phase D**, not covered here.
 
 **Exit:** two accounts log in, chat, and neither can see the other's
 memory or history (locally, via Docker Compose) — the same privacy-
