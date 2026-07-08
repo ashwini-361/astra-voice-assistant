@@ -4,7 +4,7 @@
 
 ## Context
 
-Phase W1 of `docs/ASTRA_WEB_SERVICE_PLAN.md` requires streaming mic audio
+Phase W1 of `docs/roadmap/ASTRA_WEB_SERVICE_PLAN.md` requires streaming mic audio
 from browser clients to the server and streaming synthesized audio back,
 with low-latency interruption handling. WebRTC would offer lower-latency
 peer-to-peer media transport but adds substantial complexity (ICE/STUN/TURN,
@@ -39,4 +39,4 @@ W2 metrics) show whether WebSocket is a bottleneck.
 
 ## Source
 
-`docs/ASTRA_WEB_SERVICE_PLAN.md` §1 (Confirmed decisions).
+`docs/roadmap/ASTRA_WEB_SERVICE_PLAN.md` §1 (Confirmed decisions).

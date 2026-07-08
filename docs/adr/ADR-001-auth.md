@@ -4,7 +4,7 @@
 
 ## Context
 
-The Astra web service (`docs/ASTRA_WEB_SERVICE_PLAN.md`) needs a login
+The Astra web service (`docs/roadmap/ASTRA_WEB_SERVICE_PLAN.md`) needs a login
 mechanism before Phase W3 (auth + per-user isolation) can begin. Building
 and maintaining a password-based auth system (hashing, reset flows, email
 verification, breach handling) is significant surface area that doesn't
@@ -36,4 +36,4 @@ blocking sign-ups.
 
 ## Source
 
-`docs/ASTRA_WEB_SERVICE_PLAN.md` §1 (Confirmed decisions).
+`docs/roadmap/ASTRA_WEB_SERVICE_PLAN.md` §1 (Confirmed decisions).

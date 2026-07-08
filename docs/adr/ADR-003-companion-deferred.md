@@ -4,7 +4,7 @@
 
 ## Context
 
-`docs/ASTRA_WEB_SERVICE_PLAN.md` §3 describes a future Companion desktop
+`docs/roadmap/ASTRA_WEB_SERVICE_PLAN.md` §3 describes a future Companion desktop
 app (`Cloud -> Planner -> Gateway -> Desktop Companion -> Docker / Browser
 / Files / Git`) that would give a cloud-hosted agent access to a user's
 local machine. This solves a fundamentally different problem than the
@@ -39,5 +39,5 @@ local-machine agent capability is established.
 
 ## Source
 
-`docs/ASTRA_WEB_SERVICE_PLAN.md` §1 (Confirmed decisions), §3 (Future
+`docs/roadmap/ASTRA_WEB_SERVICE_PLAN.md` §1 (Confirmed decisions), §3 (Future
 Companion architecture), §4 (Explicitly deferred).

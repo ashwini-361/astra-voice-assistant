@@ -74,7 +74,7 @@ curl http://127.0.0.1:8004/health
 ```
 
 ## Quick start (Docker Compose, one command)
-This is Phase W-1 of `docs/ASTRA_WEB_SERVICE_PLAN.md` — a reproducible dev
+This is Phase W-1 of `docs/roadmap/ASTRA_WEB_SERVICE_PLAN.md` — a reproducible dev
 environment as a prerequisite for eventual hosted deployment. It runs
 whisper/llm/tts/intent + Qdrant in containers; the frontend still runs
 natively (`npm run dev`).
