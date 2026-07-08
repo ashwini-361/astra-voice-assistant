@@ -3,7 +3,11 @@
 $OBSIDIAN_HOST = "127.0.0.1"
 $OBSIDIAN_PORT = "27124"
 $OBSIDIAN_PROTOCOL = "https"
-$API_KEY = "56787bd1a0cc0105dcaf20cdfc24d0d52b4cd865ee7f4e0ef5c109dd33955f21"
+$API_KEY = $env:OBSIDIAN_API_KEY
+if (-not $API_KEY) {
+    Write-Host "Set `$env:OBSIDIAN_API_KEY before running this script (see Obsidian's Local REST API plugin settings)." -ForegroundColor Red
+    exit 1
+}
 
 Write-Host ""
 Write-Host "=== Test 1: Host -> Obsidian API ===" -ForegroundColor Cyan

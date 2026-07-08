@@ -18,7 +18,8 @@
         "-i",
         "--rm",
         "mcp/youtube-transcript"
-      ],"env": {},
+      ],
+      "env": {},
       "autoStart": true
     },
     "fetch": {
@@ -41,7 +42,7 @@
         "-e",
         "OBSIDIAN_API_URL=https://host.docker.internal:27124",
         "-e",
-        "OBSIDIAN_API_KEY=56787bd1a0cc0105dcaf20cdfc24d0d52b4cd865ee7f4e0ef5c109dd33955f21",
+        "OBSIDIAN_API_KEY=REPLACE_WITH_YOUR_OBSIDIAN_API_KEY",
         "-e",
         "OBSIDIAN_PROTOCOL=https",
         "-v",
@@ -53,7 +54,7 @@
         "OBSIDIAN_HOST": "host.docker.internal",
         "OBSIDIAN_PORT": "27124",
         "OBSIDIAN_PROTOCOL": "https",
-        "OBSIDIAN_API_KEY": "56787bd1a0cc0105dcaf20cdfc24d0d52b4cd865ee7f4e0ef5c109dd33955f21"
+        "OBSIDIAN_API_KEY": "REPLACE_WITH_YOUR_OBSIDIAN_API_KEY"
       },
       "autoStart": true
     }
