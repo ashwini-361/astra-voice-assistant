@@ -28,6 +28,13 @@ fixed here -- these are behavior bugs, not test-infrastructure flakiness:
   triggers real MCP tool discovery/warmup rather than everything being
   mocked).
 
+All 4 are now marked `@pytest.mark.xfail` (the 3 agent_control ones
+`strict=True` since they're deterministic logic bugs; the llm_service
+one non-strict since it depends on network reachability) so the new CI
+`pytest` job (added in this same branch) doesn't block merges on
+pre-existing, already-tracked issues. Un-xfail each one when its
+underlying bug is actually fixed.
+
 ## Found during Phase A code review (2026-07-08)
 
 `core/config.py::resolve_host()` only centralizes the `0.0.0.0`/`::` ->
