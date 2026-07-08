@@ -110,12 +110,17 @@ Declared in **`docs/adr/ADR-007-multiuser-pivot.md`** (supersedes
 ADR-001's timing, amends ADR-006's frozen surface) and
 **`docs/api/`** (endpoint contracts written before implementation).
 
-Delivered as 3 sequenced PRs: (1) Postgres + user model + OAuth/JWT +
-`/api/v1/` versioning, with an auth-only gateway (no data-plane
-proxying — see `docs/api/gateway.md`); (2) per-user Qdrant isolation +
-Postgres-sourced conversation history (Postgres is the source of truth,
-Qdrant a derived index); (3) quotas + rate limiting + structured logging.
-AWS deployment is a separate, later **Phase D**, not covered here.
+Delivered as 4 sequenced PRs, each independently testable so a failure is
+attributable to one concern: (1A) infrastructure only — Postgres,
+SQLAlchemy/Alembic, Docker Compose, `/api/v1/` resource-based versioning
+(see `docs/api/README.md`'s naming conventions), the auth-only gateway
+skeleton (no data-plane proxying — see `docs/api/gateway.md`), config,
+health checks; no OAuth/JWT/users yet. (1B) authentication — OAuth,
+JWT, `/api/v1/auth/*`, `/api/v1/auth/me`, the `users` table. (2) per-user
+Qdrant isolation + Postgres-sourced conversation history (Postgres is the
+source of truth, Qdrant a derived index). (3) quotas + rate limiting +
+structured logging. AWS deployment is a separate, later **Phase D**, not
+covered here.
 
 **Exit:** two accounts log in, chat, and neither can see the other's
 memory or history (locally, via Docker Compose) — the same privacy-

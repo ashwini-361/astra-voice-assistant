@@ -61,9 +61,9 @@ No auth required. Response: `{"status": "ok", "service": "gateway"}`.
 
 ## What the gateway explicitly does NOT do
 
-- Does not forward/proxy `/transcribe`, `/generate`, `/speak`,
-  `/synthesize`, `/classify`, `/agent/loop`, or any other data-plane
-  route — the frontend calls whisper/llm/tts/intent directly.
+- Does not forward/proxy `/api/v1/voice/*`, `/api/v1/chat/*`,
+  `/api/v1/agent/loop`, or any other data-plane route — the frontend
+  calls whisper/llm/tts/intent directly.
 - Does not perform quota or rate-limit enforcement itself (PR3 puts that
   in each service, built on the shared JWT-derived `user_id` — see
   `docs/api/memory.md` and the Phase C plan's PR3 section).
