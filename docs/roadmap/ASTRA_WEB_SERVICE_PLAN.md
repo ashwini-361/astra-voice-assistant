@@ -41,6 +41,8 @@ The key change from v1: **deploy and instrument before adding auth/users.** You 
 ```
 W-1  Developer Experience   (one command up)
   |
+B    Architecture freeze   (ADR-006, new — not in original order)
+  |
 W0   Decisions + AWS setup
   |
 W1   Deploy + streaming      (single-user, on AWS)
@@ -69,6 +71,22 @@ Before shipping anything, make the whole system start with one command. You'll t
 - Smoke test that hits the pipeline end to end.
 
 **Exit:** a fresh clone runs in one command and passes a health check.
+
+---
+
+### Phase B — Architecture freeze *(new, before W0)*
+
+Not in the original phase order above — inserted between repo hardening
+(Phase W-1 / "Phase A" in project shorthand) and AWS setup, so cloud
+issues and application issues aren't debugged simultaneously. Declared
+in **`docs/adr/ADR-006-v1-architecture-freeze.md`**: env vars, core
+voice-loop HTTP APIs, Docker/Compose/Dockerfile, and `docs/` layout are
+frozen; the MCP/agent-tool surface (`/mcp/*`, `/agent/loop`) is
+explicitly excluded (still consolidating, deferred to Phase W5/W6);
+Docker Compose is declared the canonical, AWS-bound startup path over
+the native `start_stack.ps1`/`dev_manager.py` paths.
+
+**Exit:** ADR-006 accepted and merged into `dev-init`.
 
 ---
 
@@ -235,13 +253,14 @@ This matches where MCP infrastructure is heading: a gateway centralizing server 
 ## 5. Condensed sequence
 
 1. **W-1** One-command dev environment (2-3 days)
-2. **W0** Decisions + AWS setup (2-3 days)
-3. **W1** Deploy pipeline + WebSocket streaming, single-user (1-2 wks)
-4. **W2** Monitoring + admission control — *before* multi-user (4-6 days)
-5. **W3** OAuth + per-user isolation (1-2 wks)
-6. **W4** Quotas + feature flags + admin page (1-2 wks)
-7. **W5** Tools behind permission filter (overlaps agent Phase 0/1)
-8. **W6** Resume agent roadmap against real traffic
+2. **B** Architecture freeze (ADR-006 — done)
+3. **W0** Decisions + AWS setup (2-3 days)
+4. **W1** Deploy pipeline + WebSocket streaming, single-user (1-2 wks)
+5. **W2** Monitoring + admission control — *before* multi-user (4-6 days)
+6. **W3** OAuth + per-user isolation (1-2 wks)
+7. **W4** Quotas + feature flags + admin page (1-2 wks)
+8. **W5** Tools behind permission filter (overlaps agent Phase 0/1)
+9. **W6** Resume agent roadmap against real traffic
 
 **Rough total to v1:** ~6-9 weeks, with W5 doubling as agent-track progress.
 
