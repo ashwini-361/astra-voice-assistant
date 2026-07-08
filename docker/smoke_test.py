@@ -24,6 +24,7 @@ import time
 
 import httpx
 
+from core.auth import create_local_service_token
 from core.config import get_settings, resolve_host
 
 logging.basicConfig(level=logging.INFO)
@@ -70,10 +71,11 @@ async def _run_health_stage(urls: dict[str, str]) -> bool:
 async def _run_pipeline_stage(urls: dict[str, str]) -> bool:
     text = "hello, what can you help me with?"
     timings: dict[str, float] = {}
+    headers = {"Authorization": f"Bearer {create_local_service_token()}"}
 
     async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT_SEC) as client:
         start = time.perf_counter()
-        intent_resp = await client.post(f"{urls['intent']}/api/v1/voice/intents", json={"text": text})
+        intent_resp = await client.post(f"{urls['intent']}/api/v1/voice/intents", json={"text": text}, headers=headers)
         timings["intent_ms"] = (time.perf_counter() - start) * 1000
         if intent_resp.status_code != 200:
             logger.error("[intent] FAILED: status=%s body=%s", intent_resp.status_code, intent_resp.text)
@@ -82,7 +84,7 @@ async def _run_pipeline_stage(urls: dict[str, str]) -> bool:
         logger.info("[intent] label=%s provider=%s (%.0fms)", intent_data.get("label"), intent_data.get("provider"), timings["intent_ms"])
 
         start = time.perf_counter()
-        llm_resp = await client.post(f"{urls['llm']}/api/v1/chat/completions", json={"prompt": text, "stream": False})
+        llm_resp = await client.post(f"{urls['llm']}/api/v1/chat/completions", json={"prompt": text, "stream": False}, headers=headers)
         timings["llm_ms"] = (time.perf_counter() - start) * 1000
         if llm_resp.status_code != 200:
             logger.error("[llm] FAILED: status=%s body=%s", llm_resp.status_code, llm_resp.text)
@@ -95,7 +97,7 @@ async def _run_pipeline_stage(urls: dict[str, str]) -> bool:
             return False
 
         start = time.perf_counter()
-        tts_resp = await client.post(f"{urls['tts']}/api/v1/voice/speech", json={"text": assistant_text})
+        tts_resp = await client.post(f"{urls['tts']}/api/v1/voice/speech", json={"text": assistant_text}, headers=headers)
         timings["tts_ms"] = (time.perf_counter() - start) * 1000
         if tts_resp.status_code != 200:
             logger.error("[tts] FAILED: status=%s body=%s", tts_resp.status_code, tts_resp.text)

@@ -33,6 +33,7 @@ from typing import Any, Optional
 
 import httpx
 
+from core.auth import create_local_service_token
 from core.config import get_settings, resolve_host
 from duplex.interrupt_controller import InterruptController
 
@@ -266,8 +267,9 @@ class ResponseStreamManager:
             else f"http://{host}:{settings.tts_port}"
         )
         try:
+            headers = {"Authorization": f"Bearer {create_local_service_token()}"}
             async with httpx.AsyncClient(timeout=2.0) as client:
-                await client.post(f"{url}/api/v1/voice/playback/stop")
+                await client.post(f"{url}/api/v1/voice/playback/stop", headers=headers)
             logger.debug("[RSM] TTS stop sent")
         except Exception:  # pylint: disable=broad-except
             pass  # best-effort; TTS may not be running

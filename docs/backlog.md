@@ -4,6 +4,24 @@ Things noticed during work that are out of scope for the task at hand.
 Not a roadmap -- just a parking lot so they aren't lost or fixed as
 scope creep.
 
+## Deferred from PR1B (2026-07-08): frontend OAuth wiring
+
+Auth is now enforced backend-side on every service route (except
+`/health`). The frontend (`frontend/src/core/api/*.ts`) does not yet:
+- Have a login button / OAuth redirect handling for
+  `/api/v1/auth/login/{provider}` and `/api/v1/auth/callback/{provider}`.
+- Store or attach a JWT (`Authorization: Bearer ...`) to any of its
+  existing `fetch` calls.
+- Handle access-token expiry / call `/api/v1/auth/refresh`.
+
+This was a deliberate scope cut for PR1B (backend auth enforcement first,
+per the approved Phase C plan) -- until this lands, `npm run dev` against
+the live backend will 401 on every call. The native voice loop and
+`make smoke`/`make seed` are unaffected (they use
+`core.auth.create_local_service_token()`, see `docs/api/auth.md`). Needs
+its own follow-up PR before the web service is actually usable through a
+browser.
+
 ## Found during Phase A test stabilization (2026-07-08)
 
 Pre-existing test failures in `services/agent_control` and

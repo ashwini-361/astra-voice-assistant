@@ -4,8 +4,14 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
+from core.auth import get_current_user_id
 from services import llm_service
 from services.llm_models import MCPToolCallRequest
+
+# Auth is enforced on every route except /health (PR1B) -- override the
+# shared dependency for tests, which exercise routing/business logic, not
+# the auth layer itself (that's core/auth.py's own concern).
+llm_service.app.dependency_overrides[get_current_user_id] = lambda: "00000000-0000-0000-0000-000000000000"
 
 
 class _DummyResponse:

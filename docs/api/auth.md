@@ -38,21 +38,36 @@ Imported identically by `services/whisper_service.py`,
 `/api/v1/auth/me`. Pure in-process JWT decode (`pyjwt`) — no I/O, so it
 adds negligible latency to the hot voice-loop path.
 
-## Native/no-login dev path
+## Native/no-login dev path (implemented in PR1B)
 
-`start_stack.ps1` (native, no OAuth flow wired in for that path) and
-`docker/seed.py`/`docker/smoke_test.py` need a way to call authenticated
-routes without going through a real OAuth login. Resolution (finalized in
-PR2 alongside the reserved default user, referenced here for completeness
-since it affects how `get_current_user_id` is exercised in tests/scripts):
-a fixed, reserved user id (`00000000-0000-0000-0000-000000000000`,
-`email='local@astra.local'`, `provider='local'`) is seeded into `users`,
-and dev scripts mint a short-lived access JWT for that user directly
-(e.g. via a small `scripts/`-only helper that signs a token with
-`AI_ASSISTANT_JWT_SECRET` locally) rather than performing a real OAuth
-round-trip. This is explicit and documented, not a silent fallback baked
-into `get_current_user_id` itself — the dependency always requires a
-valid JWT; scripts are responsible for obtaining one.
+`orchestrator/pipeline.py`, `orchestrator/main.py`, `duplex/
+stream_manager.py`, `streaming/tts_streamer.py` (the realtime voice loop),
+and `docker/seed.py`/`docker/smoke_test.py`/manual scripts all need to
+call authenticated routes without a real OAuth login. Resolution:
+`core/auth.py` defines a fixed, reserved user id
+(`LOCAL_USER_ID = "00000000-0000-0000-0000-000000000000"`,
+`LOCAL_USER_EMAIL = "local@astra.local"`) and a
+`create_local_service_token()` helper that mints an access token for it
+directly (signs with `AI_ASSISTANT_JWT_SECRET` in-process — no OAuth
+round-trip). Every native/CLI/script caller imports this one function
+and attaches `Authorization: Bearer <token>` — explicit and centralized,
+not a silent fallback baked into `get_current_user_id` itself (that
+dependency always requires a valid JWT; callers are responsible for
+obtaining one).
+
+Note: minting this token does **not** require a `users` row to exist yet
+-- only `/api/v1/auth/me` does a DB lookup by `id`; every other service's
+`get_current_user_id` only decodes the JWT. The reserved user row itself
+is seeded in PR2 alongside per-user memory isolation.
+
+**Frontend gap (known, deferred):** the frontend's `core/api/*.ts` files
+do not yet attach any `Authorization` header or have a login UI — full
+OAuth browser wiring (login button, token storage, refresh-on-expiry,
+`/api/v1/auth/callback/*` redirect handling) is out of PR1B's scope by
+design (backend auth enforcement first) and is a follow-up. Until then,
+calling the API from the frontend's `npm run dev` will 401. Exercising
+the pipeline end-to-end is verified via `make smoke` (which uses
+`create_local_service_token()`, same as the native voice loop).
 
 ## Error responses
 

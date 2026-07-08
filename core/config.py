@@ -31,10 +31,22 @@ class Settings(BaseSettings):
 
     qdrant_url: AnyHttpUrl = Field(default="http://127.0.0.1:6333")
 
-    # Gateway service (auth-only -- see docs/api/gateway.md; PR1A: skeleton
-    # + health only, no OAuth/JWT yet -- see PR1B)
+    # Gateway service (auth-only -- see docs/api/gateway.md)
     gateway_host: str = Field(default="0.0.0.0")
     gateway_port: int = Field(default=8000)
+
+    # JWT (stateless access+refresh pair, no sessions/revocation table --
+    # see docs/adr/ADR-007-multiuser-pivot.md)
+    jwt_secret: str = Field(default="change-me-in-.env")
+    jwt_access_expiry_minutes: int = Field(default=30)
+    jwt_refresh_expiry_days: int = Field(default=30)
+
+    # OAuth providers (Google/GitHub, per ADR-001)
+    oauth_google_client_id: str = Field(default="")
+    oauth_google_client_secret: str = Field(default="")
+    oauth_github_client_id: str = Field(default="")
+    oauth_github_client_secret: str = Field(default="")
+    oauth_redirect_base_url: str = Field(default="http://127.0.0.1:8000")
 
     # Postgres (Phase C PR1A: infra only; users/conversations tables land
     # in PR1B/PR2 respectively via Alembic)

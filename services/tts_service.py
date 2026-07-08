@@ -16,7 +16,7 @@ from typing import Any, Dict, Optional
 
 import numpy as np
 import requests
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -25,6 +25,7 @@ try:
 except ImportError:
     miniaudio = None  # type: ignore[assignment]
 
+from core.auth import get_current_user_id
 from core.config import get_settings
 from humanization.emotion_tagger import strip_emotion_tags
 from services.audio_playback_engine import AudioPlaybackEngine
@@ -367,7 +368,7 @@ class SynthesizeRequest(BaseModel):
 
 
 @app.post("/api/v1/voice/speech")
-async def synthesize(request: SynthesizeRequest):
+async def synthesize(request: SynthesizeRequest, user_id: str = Depends(get_current_user_id)):
     """Return raw MP3 audio bytes for browser-side playback."""
     import edge_tts  # lazy import
     from fastapi.responses import Response as FastAPIResponse
@@ -436,7 +437,7 @@ async def synthesize(request: SynthesizeRequest):
 
 
 @app.post("/api/v1/voice/playback", response_model=SpeakResponse)
-async def speak(request: SpeakRequest) -> SpeakResponse:
+async def speak(request: SpeakRequest, user_id: str = Depends(get_current_user_id)) -> SpeakResponse:
     """Synthesise and enqueue one TTS segment for ordered playback."""
     global _chunk_counter
 
@@ -491,7 +492,7 @@ async def speak(request: SpeakRequest) -> SpeakResponse:
 
 
 @app.post("/api/v1/voice/playback/stop")
-async def stop_playback():
+async def stop_playback(user_id: str = Depends(get_current_user_id)):
     """Immediately stop all active TTS audio playback."""
     global _current_generation, _chunk_counter
 
@@ -522,12 +523,12 @@ async def health():
 
 
 @app.get("/api/v1/voice/settings")
-async def get_runtime_settings():
+async def get_runtime_settings(user_id: str = Depends(get_current_user_id)):
     return _load_runtime_settings().model_dump()
 
 
 @app.post("/api/v1/voice/settings")
-async def update_runtime_settings(update: TTSSettingsUpdate):
+async def update_runtime_settings(update: TTSSettingsUpdate, user_id: str = Depends(get_current_user_id)):
     with _runtime_lock:
         current = _runtime_settings.model_dump()
         for key, value in update.model_dump(exclude_none=True).items():
@@ -561,14 +562,14 @@ async def update_runtime_settings(update: TTSSettingsUpdate):
 
 
 @app.post("/api/v1/voice/settings/reset")
-async def reset_runtime_settings():
+async def reset_runtime_settings(user_id: str = Depends(get_current_user_id)):
     with _runtime_lock:
         globals()["_runtime_settings"] = _default_runtime_settings()
     return {"status": "reset", "settings": _load_runtime_settings().model_dump()}
 
 
 @app.get("/api/v1/voice/streaming-config")
-async def get_streaming_config():
+async def get_streaming_config(user_id: str = Depends(get_current_user_id)):
     runtime = _load_runtime_settings()
     return {
         "chunk_initial_words": runtime.chunk_initial_words,
@@ -578,7 +579,7 @@ async def get_streaming_config():
 
 
 @app.get("/debug/playback")
-async def debug_playback():
+async def debug_playback(user_id: str = Depends(get_current_user_id)):
     """Expose playback-engine diagnostics for audio troubleshooting."""
     return {
         "generation": _current_generation,

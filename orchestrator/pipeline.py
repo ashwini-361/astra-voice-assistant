@@ -8,6 +8,7 @@ from typing import Any, AsyncIterator, Dict, Optional, Tuple
 import httpx
 from pydantic import BaseModel
 
+from core.auth import create_local_service_token
 from core.config import get_settings, resolve_host
 from duplex.audio_listener import AudioListener
 from duplex.interrupt_controller import InterruptController
@@ -96,8 +97,16 @@ class PipelineResult(BaseModel):
     memories_used: Optional[str] = None
 
 
+def _auth_headers() -> Dict[str, str]:
+    """The realtime voice loop is a single native/CLI caller, not an
+    OAuth-logged-in user -- it authenticates as the reserved local/service
+    user (core.auth.LOCAL_USER_ID), same mechanism as docker/seed.py and
+    docker/smoke_test.py. See docs/api/auth.md."""
+    return {"Authorization": f"Bearer {create_local_service_token()}"}
+
+
 async def _post_json(client: httpx.AsyncClient, url: str, payload: Dict[str, Any], timeout: float = 15.0) -> Dict[str, Any]:
-    response = await client.post(url, json=payload, timeout=timeout)
+    response = await client.post(url, json=payload, timeout=timeout, headers=_auth_headers())
     response.raise_for_status()
     return response.json()
 

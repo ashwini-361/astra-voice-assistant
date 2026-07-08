@@ -8,11 +8,12 @@ import time
 import uuid
 from typing import Any, Dict, Iterator, List, Optional
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel as PydanticBaseModel
 
+from core.auth import get_current_user_id
 from core.config import get_settings
 from core.persona import load_system_prompt
 from services.llm_metrics import llm_metrics
@@ -693,7 +694,7 @@ def _apply_persona(prompt: str) -> str:
 
 
 @app.post("/api/v1/chat/completions", response_model=GenerateResponse)
-async def generate(request: GenerateRequest):
+async def generate(request: GenerateRequest, user_id: str = Depends(get_current_user_id)):
     start = time.perf_counter()
     request.prompt = _apply_persona(request.prompt)
     settings_obj = _load_effective_settings(request.model_dump(exclude_none=True))
@@ -737,7 +738,7 @@ async def generate(request: GenerateRequest):
 
 
 @app.get("/api/v1/chat/providers")
-async def providers():
+async def providers(user_id: str = Depends(get_current_user_id)):
     settings_obj = _load_effective_settings()
     return {
         "active_provider": settings_obj.provider,
@@ -751,7 +752,7 @@ async def providers():
 
 
 @app.get("/api/v1/chat/models")
-async def models(provider: Optional[str] = Query(default=None)):
+async def models(provider: Optional[str] = Query(default=None), user_id: str = Depends(get_current_user_id)):
     settings_obj = _load_effective_settings()
     if provider:
         p = provider.lower()
@@ -766,12 +767,12 @@ async def models(provider: Optional[str] = Query(default=None)):
 
 
 @app.get("/api/v1/chat/settings")
-async def get_runtime_settings():
+async def get_runtime_settings(user_id: str = Depends(get_current_user_id)):
     return _load_effective_settings().model_dump()
 
 
 @app.post("/api/v1/chat/settings")
-async def update_runtime_settings(update: SettingsUpdate):
+async def update_runtime_settings(update: SettingsUpdate, user_id: str = Depends(get_current_user_id)):
     with _settings_lock:
         current = _runtime_settings.model_dump()
         for key, value in update.model_dump(exclude_none=True).items():
@@ -782,30 +783,30 @@ async def update_runtime_settings(update: SettingsUpdate):
 
 
 @app.post("/api/v1/chat/settings/reset")
-async def reset_runtime_settings():
+async def reset_runtime_settings(user_id: str = Depends(get_current_user_id)):
     with _settings_lock:
         globals()["_runtime_settings"] = _default_runtime_settings()
     return {"status": "reset", "settings": _load_effective_settings().model_dump()}
 
 
 @app.post("/api/v1/chat/stop")
-async def stop_all_streams():
+async def stop_all_streams(user_id: str = Depends(get_current_user_id)):
     cancelled = stream_manager.stop_all()
     return {"status": "stopped", "cancelled_streams": cancelled}
 
 
 @app.get("/api/v1/mcp/servers")
-async def list_mcp_servers():
+async def list_mcp_servers(user_id: str = Depends(get_current_user_id)):
     return list_servers()
 
 
 @app.post("/api/v1/mcp/servers")
-async def register_mcp_server(config: MCPServerConfig):
+async def register_mcp_server(config: MCPServerConfig, user_id: str = Depends(get_current_user_id)):
     return upsert_server(config)
 
 
 @app.delete("/api/v1/mcp/servers/{name}")
-async def remove_mcp_server(name: str):
+async def remove_mcp_server(name: str, user_id: str = Depends(get_current_user_id)):
     return delete_server(name)
 
 
@@ -818,32 +819,32 @@ class ToolToggleRequest(PydanticBaseModel):
 
 
 @app.patch("/api/v1/mcp/servers/{name}/enabled")
-async def update_mcp_server_enabled(name: str, request: MCPServerToggleRequest):
+async def update_mcp_server_enabled(name: str, request: MCPServerToggleRequest, user_id: str = Depends(get_current_user_id)):
     return set_server_enabled(name, request.enabled)
 
 
 @app.get("/api/v1/mcp/tools")
-async def list_mcp_tools(server: str):
+async def list_mcp_tools(server: str, user_id: str = Depends(get_current_user_id)):
     return list_tools(server)
 
 
 @app.post("/api/v1/mcp/tools/call")
-async def call_mcp_tool(request: MCPToolCallRequest):
+async def call_mcp_tool(request: MCPToolCallRequest, user_id: str = Depends(get_current_user_id)):
     return call_tool(request)
 
 
 @app.post("/api/v1/mcp/browser/search")
-async def browser_search(request: BrowserSearchRequest):
+async def browser_search(request: BrowserSearchRequest, user_id: str = Depends(get_current_user_id)):
     return tool_browser_search(query=request.query, limit=request.limit)
 
 
 @app.post("/api/v1/mcp/files/search")
-async def file_search(request: FileSearchRequest):
+async def file_search(request: FileSearchRequest, user_id: str = Depends(get_current_user_id)):
     return tool_file_search(query=request.query, limit=request.limit, base_path=request.path)
 
 
 @app.post("/api/v1/mcp/music/control")
-async def music_control(request: MusicControlRequest):
+async def music_control(request: MusicControlRequest, user_id: str = Depends(get_current_user_id)):
     return tool_music_control(request.action, request.value)
 
 
@@ -858,7 +859,7 @@ class DockerServerRegisterRequest(PydanticBaseModel):
 
 
 @app.get("/api/v1/mcp/docker/servers")
-async def list_docker_servers():
+async def list_docker_servers(user_id: str = Depends(get_current_user_id)):
     servers = []
     for server in mcp_bridge.list_servers():
         row = dict(server)
@@ -868,7 +869,7 @@ async def list_docker_servers():
 
 
 @app.post("/api/v1/mcp/docker/servers")
-async def register_docker_server(req: DockerServerRegisterRequest):
+async def register_docker_server(req: DockerServerRegisterRequest, user_id: str = Depends(get_current_user_id)):
     result = mcp_bridge.register_server(
         name=req.name, command=req.command, args=req.args,
         env=req.env, auto_start=req.auto_start,
@@ -877,7 +878,7 @@ async def register_docker_server(req: DockerServerRegisterRequest):
 
 
 @app.delete("/api/v1/mcp/docker/servers/{name}")
-async def remove_docker_server(name: str):
+async def remove_docker_server(name: str, user_id: str = Depends(get_current_user_id)):
     ok = mcp_bridge.remove_server(name)
     if not ok:
         raise HTTPException(status_code=404, detail=f"Docker MCP server '{name}' not found")
@@ -885,17 +886,17 @@ async def remove_docker_server(name: str):
 
 
 @app.post("/api/v1/mcp/docker/servers/{name}/restart")
-async def restart_docker_server(name: str):
+async def restart_docker_server(name: str, user_id: str = Depends(get_current_user_id)):
     return mcp_bridge.restart_server(name)
 
 
 @app.get("/api/v1/mcp/docker/tools")
-async def list_docker_tools():
+async def list_docker_tools(user_id: str = Depends(get_current_user_id)):
     return {"tools": mcp_bridge.list_all_tools()}
 
 
 @app.get("/api/v1/mcp/catalog")
-async def mcp_catalog():
+async def mcp_catalog(user_id: str = Depends(get_current_user_id)):
     tools, unavailable = _build_tool_specs()
     return {
         "tools": tools,
@@ -908,17 +909,17 @@ async def mcp_catalog():
 
 
 @app.post("/api/v1/mcp/docker/tools/call")
-async def call_docker_tool(request: MCPToolCallRequest):
+async def call_docker_tool(request: MCPToolCallRequest, user_id: str = Depends(get_current_user_id)):
     return mcp_bridge.call_tool(request.server, request.tool, request.arguments)
 
 
 @app.post("/api/v1/mcp/docker/call")
-async def call_docker_tool_alias(request: MCPToolCallRequest):
+async def call_docker_tool_alias(request: MCPToolCallRequest, user_id: str = Depends(get_current_user_id)):
     return mcp_bridge.call_tool(request.server, request.tool, request.arguments)
 
 
 @app.post("/api/v1/tools/toggle")
-async def toggle_tool(request: ToolToggleRequest):
+async def toggle_tool(request: ToolToggleRequest, user_id: str = Depends(get_current_user_id)):
     server = request.server
     with _tools_lock:
         current = TOOLS.setdefault(server, {"enabled": True, "tools": []})
@@ -928,7 +929,7 @@ async def toggle_tool(request: ToolToggleRequest):
 
 
 @app.post("/api/v1/agent/loop")
-async def agent_loop(request: AgentLoopRequest):
+async def agent_loop(request: AgentLoopRequest, user_id: str = Depends(get_current_user_id)):
     start = time.perf_counter()
     settings_obj = _load_effective_settings(request.model_dump(exclude_none=True))
     max_steps = min(max(request.max_steps, 1), AGENT_MAX_STEPS)
@@ -975,7 +976,7 @@ async def agent_loop(request: AgentLoopRequest):
 
 
 @app.get("/api/v1/chat/metrics")
-async def metrics():
+async def metrics(user_id: str = Depends(get_current_user_id)):
     return llm_metrics.snapshot()
 
 

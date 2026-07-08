@@ -8,6 +8,7 @@ from typing import AsyncIterator, Callable, Optional
 
 import httpx
 
+from core.auth import create_local_service_token
 from core.config import get_settings, resolve_host
 from duplex.interrupt_controller import InterruptController
 from humanization.emotion_tagger import EmotionSegment, EmotionStreamBuffer
@@ -47,10 +48,14 @@ def _looks_like_sentence_end(text: str) -> bool:
     return bool(stripped) and stripped.endswith(_SENTENCE_ENDERS)
 
 
+def _auth_headers() -> dict:
+    return {"Authorization": f"Bearer {create_local_service_token()}"}
+
+
 async def _fetch_chunk_profile(client: httpx.AsyncClient) -> ChunkProfile:
     url = _tts_url()
     try:
-        resp = await client.get(f"{url}/api/v1/voice/streaming-config", timeout=2.0)
+        resp = await client.get(f"{url}/api/v1/voice/streaming-config", timeout=2.0, headers=_auth_headers())
         resp.raise_for_status()
         data = resp.json()
         return ChunkProfile(
@@ -92,7 +97,7 @@ async def _send_tts_segment(
             logger.debug("[tts-stream] gen=%d stale after lock - dropping segment", generation_id)
             return
         try:
-            resp = await client.post(f"{url}/api/v1/voice/playback", json=payload, timeout=30.0)
+            resp = await client.post(f"{url}/api/v1/voice/playback", json=payload, timeout=30.0, headers=_auth_headers())
             logger.info(
                 "[tts-stream] gen=%d chunk=%d sent segment (%d chars, words=%d, emotion=%s) -> %s",
                 generation_id,
