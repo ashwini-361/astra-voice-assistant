@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth import create_access_token, create_refresh_token, decode_token, get_current_user_id
@@ -80,7 +81,17 @@ async def callback(provider: str, request: Request, db: AsyncSession = Depends(g
         user.display_name = profile.get("display_name")
         user.avatar_url = profile.get("avatar_url")
         user.last_login_at = datetime.now(timezone.utc)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        # email is UNIQUE across all providers; this fires when the same
+        # email address logs in via a *different* provider than it first
+        # registered with (e.g. Google first, GitHub later, same email).
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="An account with this email already exists under a different sign-in provider",
+        ) from exc
     await db.refresh(user)
 
     return TokenPair(

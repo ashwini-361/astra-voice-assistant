@@ -24,7 +24,7 @@ import time
 
 import httpx
 
-from core.auth import create_local_service_token
+from core.auth import local_service_auth_headers
 from core.config import get_settings, resolve_host
 
 logging.basicConfig(level=logging.INFO)
@@ -71,7 +71,7 @@ async def _run_health_stage(urls: dict[str, str]) -> bool:
 async def _run_pipeline_stage(urls: dict[str, str]) -> bool:
     text = "hello, what can you help me with?"
     timings: dict[str, float] = {}
-    headers = {"Authorization": f"Bearer {create_local_service_token()}"}
+    headers = local_service_auth_headers()
 
     async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT_SEC) as client:
         start = time.perf_counter()

@@ -29,6 +29,12 @@ def create_local_service_token() -> str:
     return create_access_token(LOCAL_USER_ID, LOCAL_USER_EMAIL)
 
 
+def local_service_auth_headers() -> dict:
+    """`{"Authorization": ...}` header dict for create_local_service_token(),
+    centralized so every native/CLI caller builds it the same way."""
+    return {"Authorization": f"Bearer {create_local_service_token()}"}
+
+
 def create_access_token(user_id: str, email: str) -> str:
     settings = get_settings()
     now = datetime.now(timezone.utc)

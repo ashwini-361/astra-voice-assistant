@@ -23,7 +23,7 @@ from duplex.speech_capture import CaptureDiagnostics, SpeechCapture
 from duplex.state_machine import AssistantStateController
 from duplex.stream_manager import ResponseStreamManager
 from duplex.vad_engine import VADEngine
-from core.auth import create_local_service_token
+from core.auth import local_service_auth_headers
 from core.config import get_settings, resolve_host
 from memory.memory_manager import MemoryManager
 from orchestrator.memory_buffer import ConversationBuffer
@@ -105,8 +105,7 @@ async def _transcribe_wav_bytes(wav_bytes: bytes) -> str:
         for attempt in range(1, 4):
             try:
                 files = {"audio_file": ("live.wav", wav_bytes, "audio/wav")}
-                headers = {"Authorization": f"Bearer {create_local_service_token()}"}
-                response = await client.post(f"{base_url}/api/v1/voice/transcriptions", files=files, headers=headers)
+                response = await client.post(f"{base_url}/api/v1/voice/transcriptions", files=files, headers=local_service_auth_headers())
                 response.raise_for_status()
                 data = response.json()
                 return str(data.get("text", "")).strip()
@@ -284,8 +283,7 @@ async def _run_duplex_async(
         """Fire-and-forget TTS /stop from the audio callback thread."""
         def _do_stop():
             try:
-                headers = {"Authorization": f"Bearer {create_local_service_token()}"}
-                _requests.post(f"{_tts_stop_url}/api/v1/voice/playback/stop", timeout=1.0, headers=headers)
+                _requests.post(f"{_tts_stop_url}/api/v1/voice/playback/stop", timeout=1.0, headers=local_service_auth_headers())
                 logger.debug("[barge-in] TTS /stop sent")
             except Exception:  # pylint: disable=broad-except
                 pass
