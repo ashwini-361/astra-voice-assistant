@@ -87,6 +87,9 @@ jobs:
       - name: Run memory isolation tests against the live stack
         run: python -m pytest tests/test_memory_isolation.py -v
 
+      - name: Run rate-limit and quota tests against the live stack
+        run: python -m pytest tests/test_rate_limit.py tests/test_quota.py -v
+
       - name: Run smoke test
         run: docker compose --profile tools run --rm smoke-test
 

@@ -56,3 +56,44 @@ async def test_pipeline_flow(monkeypatch):
     assert result.assistant_text
     assert buffer.get_history(), "memory buffer should be updated"
     assert json.loads(result.json())["timings_ms"]
+
+
+@pytest.mark.anyio
+async def test_pipeline_logs_consistent_request_id(monkeypatch, caplog):
+    """PR3: every stage log line for one pipeline run must carry the same
+    request_id, so log aggregation can correlate a single request's
+    stages (docs roadmap's structured-logging verification goal)."""
+    buffer = ConversationBuffer(max_turns=3)
+
+    async def fake_post_json(_client, url: str, payload: Dict[str, Any], timeout: float = 15.0):  # pylint: disable=unused-argument
+        if url.endswith("/api/v1/voice/intents"):
+            return {"label": "chat"}
+        if url.endswith("/api/v1/voice/playback"):
+            return {"accepted": True, "backend_status": 200}
+        raise RuntimeError("Unexpected URL")
+
+    async def fake_stream_llm(prompt: str, **_kwargs):  # pylint: disable=unused-argument
+        text = f"Echo: {prompt[:20]}"
+        for tok in text.split(" "):
+            yield tok + " "
+
+    monkeypatch.setattr(pipeline, "_post_json", fake_post_json)
+    monkeypatch.setattr(pipeline, "stream_llm", fake_stream_llm)
+
+    with caplog.at_level("INFO"):
+        await pipeline.run_pipeline("Hello there", buffer, memory_manager=_FakeMemory(), emotion_engine=_FakeEmotion())
+
+    request_ids = set()
+    stages_seen = set()
+    for record in caplog.records:
+        try:
+            parsed = json.loads(record.message)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if "request_id" in parsed:
+            request_ids.add(parsed["request_id"])
+        if "stage" in parsed:
+            stages_seen.add(parsed["stage"])
+
+    assert len(request_ids) == 1, f"expected one consistent request_id across stages, got {request_ids}"
+    assert {"intent", "llm_stream_collected", "tts"} <= stages_seen

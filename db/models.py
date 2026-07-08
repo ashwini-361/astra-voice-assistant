@@ -1,7 +1,4 @@
-"""SQLAlchemy declarative models.
-
-`usage_counters` (PR3) lands in a later Phase C PR.
-"""
+"""SQLAlchemy declarative models."""
 import uuid
 from datetime import datetime
 
@@ -43,3 +40,18 @@ class Conversation(Base):
     content: Mapped[str]
     qdrant_point_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class UsageCounter(Base):
+    """Per-user, per-month quota tracking (docs/adr/ADR-007-multiuser-pivot.md).
+    Enforced locally per-service via the shared JWT-derived user_id, not
+    centralized in the gateway."""
+
+    __tablename__ = "usage_counters"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    period: Mapped[str] = mapped_column(primary_key=True)  # "YYYY-MM"
+    llm_tokens_used: Mapped[int] = mapped_column(default=0)
+    requests_used: Mapped[int] = mapped_column(default=0)

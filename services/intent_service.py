@@ -8,8 +8,8 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from core.auth import get_current_user_id
 from core.config import get_settings
+from core.rate_limit import rate_limited_user_id
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -113,7 +113,7 @@ def _softmax(logits: np.ndarray) -> np.ndarray:
 
 
 @app.post("/api/v1/voice/intents", response_model=IntentResponse)
-async def classify(request: IntentRequest, user_id: str = Depends(get_current_user_id)) -> IntentResponse:
+async def classify(request: IntentRequest, user_id: str = Depends(rate_limited_user_id)) -> IntentResponse:
     if _fallback_mode or _session is None:
         label = _fallback_intent(request.text)
         return IntentResponse(label=label, scores={"chat": 1.0 if label == "chat" else 0.0}, provider="fallback")

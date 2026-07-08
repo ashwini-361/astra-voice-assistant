@@ -48,11 +48,21 @@ class Settings(BaseSettings):
     oauth_github_client_secret: str = Field(default="")
     oauth_redirect_base_url: str = Field(default="http://127.0.0.1:8000")
 
-    # Postgres (Phase C PR1A: infra only; users/conversations tables land
-    # in PR1B/PR2 respectively via Alembic)
+    # Postgres (Phase C PR1A: infra only; users/conversations/usage_counters
+    # tables land in PR1B/PR2/PR3 respectively via Alembic)
     postgres_dsn: str = Field(
         default="postgresql+asyncpg://astra:astra@127.0.0.1:5432/astra"
     )
+
+    # Redis (Phase C PR3 -- generic cache wrapper, core/cache.py; rate
+    # limiting is one consumer, not the only one -- see ADR-007)
+    redis_url: str = Field(default="redis://127.0.0.1:6379/0")
+
+    # Quotas & rate limiting (PR3) -- enforced locally per-service via the
+    # shared JWT-derived user_id, not centralized in the gateway (ADR-007)
+    rate_limit_requests_per_minute: int = Field(default=60)
+    quota_max_requests_per_month: int = Field(default=2000)
+    quota_max_tokens_per_month: int = Field(default=200000)
 
     # Input microphone device: empty = OS default. Set to a substring of the
     # device name (e.g. "AMD Audio Device") or a numeric sounddevice index.

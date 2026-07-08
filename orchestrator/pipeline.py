@@ -3,6 +3,7 @@ import asyncio
 import json
 import logging
 import time
+import uuid
 from typing import Any, AsyncIterator, Dict, Optional, Tuple
 
 import httpx
@@ -103,7 +104,7 @@ async def _post_json(client: httpx.AsyncClient, url: str, payload: Dict[str, Any
     return response.json()
 
 
-async def _call_intent(client: httpx.AsyncClient, text: str) -> Tuple[str, float]:
+async def _call_intent(client: httpx.AsyncClient, text: str, request_id: str = "") -> Tuple[str, float]:
     start = time.perf_counter()
     settings = get_settings()
     host = resolve_host(settings.intent_host)
@@ -115,11 +116,11 @@ async def _call_intent(client: httpx.AsyncClient, text: str) -> Tuple[str, float
         logger.warning("Intent service unavailable, defaulting to chat: %s", exc)
         intent = "chat"
     elapsed_ms = (time.perf_counter() - start) * 1000
-    logger.info(json.dumps({"stage": "intent", "intent": intent, "intent_ms": round(elapsed_ms, 2)}))
+    logger.info(json.dumps({"stage": "intent", "request_id": request_id, "intent": intent, "intent_ms": round(elapsed_ms, 2)}))
     return intent, elapsed_ms
 
 
-async def _call_agent(text: str) -> Tuple[str, float]:
+async def _call_agent(text: str, request_id: str = "") -> Tuple[str, float]:
     """Mode A: call agent loop (non-stream) and return synthesized text."""
     start = time.perf_counter()
     settings = get_settings()
@@ -135,7 +136,7 @@ async def _call_agent(text: str) -> Tuple[str, float]:
         logger.warning("[pipeline] agent call failed, falling back to LLM stream: %s", exc)
         response_text = ""
     elapsed_ms = (time.perf_counter() - start) * 1000
-    logger.info(json.dumps({"stage": "agent", "agent_ms": round(elapsed_ms, 2)}))
+    logger.info(json.dumps({"stage": "agent", "request_id": request_id, "agent_ms": round(elapsed_ms, 2)}))
     return response_text, elapsed_ms
 
 
@@ -151,7 +152,7 @@ async def _call_llm(client: httpx.AsyncClient, prompt: str) -> Tuple[str, float]
     return response_text, elapsed_ms
 
 
-async def _collect_llm_stream(prompt: str) -> Tuple[str, float]:
+async def _collect_llm_stream(prompt: str, request_id: str = "") -> Tuple[str, float]:
     """Consume streamed LLM tokens and return full text + elapsed latency."""
     start = time.perf_counter()
     parts: list[str] = []
@@ -159,18 +160,18 @@ async def _collect_llm_stream(prompt: str) -> Tuple[str, float]:
         parts.append(token)
     text = "".join(parts)
     elapsed_ms = (time.perf_counter() - start) * 1000
-    logger.info(json.dumps({"stage": "llm_stream_collected", "llm_ms": round(elapsed_ms, 2)}))
+    logger.info(json.dumps({"stage": "llm_stream_collected", "request_id": request_id, "llm_ms": round(elapsed_ms, 2)}))
     return text, elapsed_ms
 
 
-async def _call_tts(client: httpx.AsyncClient, text: str) -> Tuple[Optional[int], float]:
+async def _call_tts(client: httpx.AsyncClient, text: str, request_id: str = "") -> Tuple[Optional[int], float]:
     start = time.perf_counter()
     settings = get_settings()
     host = resolve_host(settings.tts_host)
     url = f"{host}:{settings.tts_port}" if host.startswith("http") else f"http://{host}:{settings.tts_port}"
     data = await _post_json(client, f"{url}/api/v1/voice/playback", {"text": text})
     elapsed_ms = (time.perf_counter() - start) * 1000
-    logger.info(json.dumps({"stage": "tts", "tts_ms": round(elapsed_ms, 2)}))
+    logger.info(json.dumps({"stage": "tts", "request_id": request_id, "tts_ms": round(elapsed_ms, 2)}))
     return data.get("backend_status"), elapsed_ms
 
 
@@ -186,13 +187,14 @@ async def run_pipeline(
     tts_status: Optional[int] = None
     memories_used: Optional[str] = None
     emotional_context: Optional[str] = None
+    request_id = str(uuid.uuid4())
 
     memory_manager = memory_manager or MemoryManager()
     emotion_engine = emotion_engine or EmotionEngine()
 
     try:
         async with httpx.AsyncClient() as client:
-            intent, intent_ms = await _call_intent(client, text)
+            intent, intent_ms = await _call_intent(client, text, request_id=request_id)
             timings["intent_ms"] = intent_ms
 
             if intent != "chat":
@@ -213,7 +215,7 @@ async def run_pipeline(
 
             prompt = build_prompt(buffer, text, emotional_state=emotional_context, retrieved_memories=memories_used)
 
-            assistant_text, llm_ms = await _collect_llm_stream(prompt)
+            assistant_text, llm_ms = await _collect_llm_stream(prompt, request_id=request_id)
             timings["llm_ms"] = llm_ms
 
             # ── Emotion parsing ───────────────────────────────────────
@@ -222,7 +224,7 @@ async def run_pipeline(
             clean_text = strip_emotion_tags(assistant_text)
 
             prosody_text, _ = apply_prosody(clean_text)
-            tts_status, tts_ms = await _call_tts(client, prosody_text)
+            tts_status, tts_ms = await _call_tts(client, prosody_text, request_id=request_id)
             timings["tts_ms"] = tts_ms
 
             # Store memory after response (use clean text), off the event loop
@@ -239,6 +241,8 @@ async def run_pipeline(
     buffer.add("assistant", assistant_text)
 
     log_metrics({
+        "request_id": request_id,
+        "user_id": LOCAL_USER_ID,
         "whisper_ms": timings.get("whisper_ms"),
         "intent_ms": timings.get("intent_ms"),
         "llm_ms": timings.get("llm_ms"),
@@ -293,6 +297,7 @@ async def run_pipeline_streaming(
     assistant_text = ""
     interrupted = False
     intent = "chat"
+    request_id = str(uuid.uuid4())
 
     memory_manager = memory_manager or MemoryManager()
     emotion_engine = emotion_engine or EmotionEngine()
@@ -310,7 +315,7 @@ async def run_pipeline_streaming(
 
     # ── Intent ───────────────────────────────────────────────────────
     async with httpx.AsyncClient() as client:
-        intent, intent_ms = await _call_intent(client, text)
+        intent, intent_ms = await _call_intent(client, text, request_id=request_id)
         timings["intent_ms"] = intent_ms
 
     # ── Memory retrieval (off the event loop -- Postgres+Qdrant I/O) ──
@@ -333,11 +338,11 @@ async def run_pipeline_streaming(
 
     # ── Route: Mode A (agent) vs Mode B (stream) ─────────────────────
     use_agent = _needs_tools(text)
-    logger.info(json.dumps({"stage": "route", "generation_id": generation_id, "mode": "agent" if use_agent else "stream", "query": text[:80]}))
+    logger.info(json.dumps({"stage": "route", "request_id": request_id, "generation_id": generation_id, "mode": "agent" if use_agent else "stream", "query": text[:80]}))
 
     if use_agent:
         # ── Mode A: agent loop (non-stream) → synthesized text → TTS ─
-        agent_text, agent_ms = await _call_agent(text)
+        agent_text, agent_ms = await _call_agent(text, request_id=request_id)
         timings["llm_ms"] = agent_ms
 
         if not agent_text:
